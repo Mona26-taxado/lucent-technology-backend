@@ -39,23 +39,22 @@ DEFAULT_FIELD_POSITIONS = {
         "text_decoration": "underline",
     },
     "training_date": {
-        # Under background label "Training Date :" (no room to the right — border)
+        # Under artwork label — right-of-label hits navy border and disappears in PDF
         "x": 70,
-        "y": 83.8,
+        "y": 83.5,
         "width": 24,
-        "font_size": 13,
-        "font_family": "'Open Sans', Arial, Helvetica, sans-serif",
+        "font_size": 12,
+        "font_family": "Arial, Helvetica, sans-serif",
         "font_weight": "700",
         "text_color": "#1A2B56",
         "text_align": "left",
     },
     "certificate_number": {
-        # Under background label "Certificate No."
         "x": 70,
-        "y": 88.0,
+        "y": 87.8,
         "width": 24,
-        "font_size": 13,
-        "font_family": "'Open Sans', Arial, Helvetica, sans-serif",
+        "font_size": 12,
+        "font_family": "Arial, Helvetica, sans-serif",
         "font_weight": "700",
         "text_color": "#1A2B56",
         "text_align": "left",
