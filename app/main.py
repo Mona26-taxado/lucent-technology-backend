@@ -129,11 +129,23 @@ def seed_database() -> None:
         if template:
             stored_positions = parse_field_positions(template.field_positions_json)
             changed = False
-            for key in ("training_date", "certificate_number"):
+            for key in ("training_date", "certificate_number", "driving_licence_number"):
                 desired = DEFAULT_FIELD_POSITIONS[key]
                 current = stored_positions.get(key) if isinstance(stored_positions.get(key), dict) else {}
-                # Refresh if missing, off-canvas, or still on pre-fix right-edge coords
-                # Always refresh geometry so print date/cert stay visible after deploy
+                if key == "driving_licence_number":
+                    needs_refresh = (
+                        not current
+                        or current.get("font_family") != desired["font_family"]
+                        or str(current.get("font_weight")) not in ("700", "bold")
+                    )
+                    if needs_refresh:
+                        stored_positions[key] = {
+                            **(current or {}),
+                            **desired,
+                            **{k: current[k] for k in ("x", "y", "width") if isinstance(current, dict) and k in current},
+                        }
+                        changed = True
+                    continue
                 needs_refresh = (
                     not current
                     or float(current.get("y") or 0) < 0

@@ -30,13 +30,9 @@ def get_paper_size(key: str | None) -> dict:
 
 
 def fit_certificate_mm(paper: dict) -> tuple[float, float]:
-    """Fit design-aspect certificate inside the paper without stretching."""
-    aspect = CERTIFICATE_ASPECT_W / CERTIFICATE_ASPECT_H
-    page_w = float(paper["width_mm"])
-    page_h = float(paper["height_mm"])
-    width = page_w
-    height = width / aspect
-    if height > page_h:
-        height = page_h
-        width = height * aspect
-    return round(width, 3), round(height, 3)
+    """Fill the full paper — no letterbox margins.
+
+    Design aspect (686×938) is very close to A4 / 8.5×12; stretching a few
+    percent removes the empty white band that letterboxing left at the bottom.
+    """
+    return round(float(paper["width_mm"]), 3), round(float(paper["height_mm"]), 3)

@@ -71,22 +71,11 @@ def build_certificate_context(db: Session, certificate: Certificate) -> dict:
             else:
                 field_positions[key] = val
 
-    # Critical print fields — force safe print geometry (Playwright clips bottom-right
-    # when old center-anchored / cqw styles push date & cert no off the page).
-    for key in ("training_date", "certificate_number"):
+    # Keep print fields identical to preview defaults (view === PDF)
+    locked = ("training_date", "certificate_number", "address", "driving_licence_number")
+    for key in locked:
         default = DEFAULT_FIELD_POSITIONS[key]
-        pos = field_positions.get(key) if isinstance(field_positions.get(key), dict) else {}
-        color = pos.get("text_color") or default["text_color"]
-        family = pos.get("font_family") or default["font_family"]
-        weight = pos.get("font_weight") or default["font_weight"]
-        field_positions[key] = {
-            **default,
-            "font_family": family,
-            "font_weight": weight,
-            "text_color": color,
-            "text_align": "left",
-            "font_size": max(float(pos.get("font_size") or 0), float(default["font_size"]), 12),
-        }
+        field_positions[key] = default.copy()
 
     bg_uri = None
     if template:
@@ -141,22 +130,67 @@ async def generate_pdf(db: Session, certificate: Certificate) -> str:
     paper = get_paper_size(getattr(app_settings, "paper_size", None) or DEFAULT_PAPER_SIZE)
 
     html = render_certificate_html(db, certificate)
+    ctx = build_certificate_context(db, certificate)
+    ctx_date = ctx["training_date"]
+    ctx_number = ctx["certificate_number"]
+    date_pos = ctx["fields"]["training_date"]
+    cert_pos = ctx["fields"]["certificate_number"]
     settings.generated_path.mkdir(parents=True, exist_ok=True)
 
     filename = safe_pdf_filename(certificate.certificate_number, certificate.candidate_name)
     output_path = settings.generated_path / filename
 
+    # A4 @ 96dpi ≈ 794×1123; 8.5x12 @ 96dpi ≈ 816×1152
+    viewport_w = int(round(paper["width_mm"] / 25.4 * 96))
+    viewport_h = int(round(paper["height_mm"] / 25.4 * 96))
+
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        page = await browser.new_page()
-        # "load" is safer than networkidle (Google Fonts can stall offline servers)
+        page = await browser.new_page(viewport={"width": viewport_w, "height": viewport_h})
         await page.set_content(html, wait_until="load")
         try:
             await page.evaluate("() => document.fonts.ready")
         except Exception:
             pass
-        await page.wait_for_timeout(250)
-        # prefer_css_page_size=False — avoid double-sizing that clips bottom fields
+        # Failsafe: ensure text present; keep same anchors as preview/defaults
+        await page.evaluate(
+            """([dateText, certNo, datePos, certPos]) => {
+              const dateEl = document.getElementById('print-training-date');
+              const certEl = document.getElementById('print-certificate-number');
+              if (dateEl) {
+                if (!dateEl.textContent || !dateEl.textContent.trim()) dateEl.textContent = dateText;
+                dateEl.style.left = datePos.x + '%';
+                dateEl.style.top = datePos.y + '%';
+                dateEl.style.maxWidth = (datePos.width || 22) + '%';
+                dateEl.style.fontSize = (datePos.font_size || 10.5) + 'pt';
+                dateEl.style.fontFamily = datePos.font_family || "'Open Sans', Arial, Helvetica, sans-serif";
+                dateEl.style.fontWeight = String(datePos.font_weight || '700');
+                dateEl.style.color = datePos.text_color || '#1A2B56';
+                dateEl.style.textAlign = 'left';
+                dateEl.style.visibility = 'visible';
+                dateEl.style.opacity = '1';
+                dateEl.style.display = 'block';
+                dateEl.style.zIndex = '99';
+              }
+              if (certEl) {
+                if (!certEl.textContent || !certEl.textContent.trim()) certEl.textContent = certNo;
+                certEl.style.left = certPos.x + '%';
+                certEl.style.top = certPos.y + '%';
+                certEl.style.maxWidth = (certPos.width || 22) + '%';
+                certEl.style.fontSize = (certPos.font_size || 12.7) + 'pt';
+                certEl.style.fontFamily = certPos.font_family || "'Open Sans', Arial, Helvetica, sans-serif";
+                certEl.style.fontWeight = String(certPos.font_weight || '700');
+                certEl.style.color = certPos.text_color || '#1A2B56';
+                certEl.style.textAlign = 'left';
+                certEl.style.visibility = 'visible';
+                certEl.style.opacity = '1';
+                certEl.style.display = 'block';
+                certEl.style.zIndex = '99';
+              }
+            }""",
+            [ctx_date, ctx_number, date_pos, cert_pos],
+        )
+        await page.wait_for_timeout(200)
         await page.pdf(
             path=str(output_path),
             width=f"{paper['width_mm']}mm",
@@ -164,7 +198,8 @@ async def generate_pdf(db: Session, certificate: Certificate) -> str:
             landscape=False,
             print_background=True,
             margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
-            prefer_css_page_size=False,
+            prefer_css_page_size=True,
+            page_ranges="1",
         )
         await browser.close()
 

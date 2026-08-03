@@ -198,5 +198,5 @@ def get_dashboard_summary(db: Session) -> dict:
     }
 
 
-def get_recent_certificates(db: Session, limit: int = 10) -> list[Certificate]:
+def get_recent_certificates(db: Session, limit: int = 3) -> list[Certificate]:
     return db.query(Certificate).order_by(Certificate.created_at.desc()).limit(limit).all()

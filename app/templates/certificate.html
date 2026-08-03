@@ -9,22 +9,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
   <style>
     /*
-      PDF layout notes:
-      - Use pt fonts (cqw is unreliable in Playwright PDF for small fields).
-      - Top-align the certificate (do NOT vertically center) — Playwright often
-        clips the bottom ~10% when body uses flex vertical centering, which
-        hides training date / certificate number while name/DL still show.
-      - Date/cert use left-edge anchors next to background labels.
+      Single-page print only. Do NOT use translate(-50%,-50%) on the page root —
+      Chromium PDF treats that as overflow and creates a blank 2nd page.
+      Certificate fills the chosen paper size edge-to-edge (no letterbox).
     */
     @page {
       size: {{ page_width_mm }}mm {{ page_height_mm }}mm;
       margin: 0;
     }
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       width: {{ page_width_mm }}mm;
       height: {{ page_height_mm }}mm;
@@ -39,12 +32,11 @@
     }
     .certificate-page {
       position: absolute;
-      left: 50%;
+      left: 0;
       top: 0;
-      transform: translateX(-50%);
-      width: {{ cert_width_mm }}mm;
-      height: {{ cert_height_mm }}mm;
-      overflow: visible;
+      width: {{ page_width_mm }}mm;
+      height: {{ page_height_mm }}mm;
+      overflow: hidden;
       background: #fff;
     }
     .certificate-bg {
@@ -63,21 +55,14 @@
       word-wrap: break-word;
       overflow: visible;
     }
-    /* Date / cert — top-left anchor (no -50% shift). Positions hardcoded in HTML
-       under the artwork labels; right-of-label lands in the navy border (= invisible). */
-    .field-meta {
-      transform: none !important;
+    /* Match preview: left-aligned overlays use -translate-y-1/2 only */
+    .field-left {
+      transform: translate(0, -50%) !important;
       text-align: left !important;
       white-space: nowrap;
       width: auto !important;
-      max-width: none;
       overflow: visible;
-      z-index: 10;
-      color: #1A2B56 !important;
-      font-family: Arial, Helvetica, sans-serif !important;
-      font-weight: 700 !important;
-      font-size: 12pt !important;
-      line-height: 1.2;
+      z-index: 20;
     }
     .field-nowrap {
       white-space: nowrap;
@@ -187,7 +172,7 @@
       font-weight: {{ fields.address.font_weight }};
       color: {{ fields.address.text_color }};
       text-align: {{ fields.address.text_align }};
-      text-decoration: {{ fields.address.text_decoration | default('none') }};
+      text-decoration: {{ fields.address.text_decoration | default('underline') }};
       text-underline-offset: 0.18em;
     ">{{ address }}</div>
     {% endif %}
@@ -202,18 +187,35 @@
       font-weight: {{ fields.driving_licence_number.font_weight }};
       color: {{ fields.driving_licence_number.text_color }};
       text-align: {{ fields.driving_licence_number.text_align }};
+      letter-spacing: 0.04em;
     ">{{ driving_licence_number }}</div>
     {% endif %}
 
-    {# Hardcoded anchors — DO NOT use DB x/y here.
-       Right-of-label coords fall into the navy corner border and vanish in print.
-       Place values under the artwork labels on white background. #}
-    {% if training_date %}
-    <div class="field field-meta" style="left: 70%; top: 83.5%;">{{ training_date }}</div>
+    {# Same anchors + left transform as CertificatePreview FieldText #}
+    {% if training_date and fields.training_date %}
+    <div id="print-training-date" class="field field-left" style="
+      left: {{ fields.training_date.x }}%;
+      top: {{ fields.training_date.y }}%;
+      max-width: {{ fields.training_date.width }}%;
+      font-size: {{ fields.training_date.font_size }}pt;
+      font-family: {{ fields.training_date.font_family | safe }};
+      font-weight: {{ fields.training_date.font_weight }};
+      color: {{ fields.training_date.text_color }};
+      text-align: left;
+    ">{{ training_date }}</div>
     {% endif %}
 
-    {% if certificate_number %}
-    <div class="field field-meta" style="left: 70%; top: 87.8%;">{{ certificate_number }}</div>
+    {% if certificate_number and fields.certificate_number %}
+    <div id="print-certificate-number" class="field field-left" style="
+      left: {{ fields.certificate_number.x }}%;
+      top: {{ fields.certificate_number.y }}%;
+      max-width: {{ fields.certificate_number.width }}%;
+      font-size: {{ fields.certificate_number.font_size }}pt;
+      font-family: {{ fields.certificate_number.font_family | safe }};
+      font-weight: {{ fields.certificate_number.font_weight }};
+      color: {{ fields.certificate_number.text_color }};
+      text-align: left;
+    ">{{ certificate_number }}</div>
     {% endif %}
 
     {% if signature_uri and fields.signature and fields.signature.y >= 0 %}
