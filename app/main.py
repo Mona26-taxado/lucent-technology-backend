@@ -133,21 +133,29 @@ def seed_database() -> None:
                 desired = DEFAULT_FIELD_POSITIONS[key]
                 current = stored_positions.get(key) if isinstance(stored_positions.get(key), dict) else {}
                 # Refresh if missing, off-canvas, or still on pre-fix right-edge coords
+                # Always refresh geometry so print date/cert stay visible after deploy
                 needs_refresh = (
                     not current
                     or float(current.get("y") or 0) < 0
-                    or float(current.get("x") or 0) >= 78
+                    or abs(float(current.get("x") or 0) - float(desired["x"])) > 0.05
+                    or abs(float(current.get("y") or 0) - float(desired["y"])) > 0.05
                     or current.get("text_align") != "left"
+                    or float(current.get("font_size") or 0) < 12
                 )
                 if needs_refresh:
-                    stored_positions[key] = {**desired, **{k: v for k, v in current.items() if k in ("font_family", "font_weight", "text_color") and v}}
-                    stored_positions[key].update({
+                    stored_positions[key] = {
+                        **desired,
+                        **{
+                            k: v
+                            for k, v in current.items()
+                            if k in ("font_family", "font_weight", "text_color") and v
+                        },
                         "x": desired["x"],
                         "y": desired["y"],
                         "width": desired["width"],
                         "font_size": desired["font_size"],
                         "text_align": "left",
-                    })
+                    }
                     changed = True
             if changed:
                 template.field_positions_json = dump_field_positions(stored_positions)

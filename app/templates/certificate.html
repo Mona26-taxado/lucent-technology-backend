@@ -9,9 +9,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
   <style>
     /*
-      PDF print layout — use absolute pt fonts (Playwright-safe).
-      Preview uses the same % anchors; cqw is avoided here because it can
-      drop small fields (training date / cert no) in headless PDF.
+      PDF layout notes:
+      - Use pt fonts (cqw is unreliable in Playwright PDF for small fields).
+      - Top-align the certificate (do NOT vertically center) — Playwright often
+        clips the bottom ~10% when body uses flex vertical centering, which
+        hides training date / certificate number while name/DL still show.
+      - Date/cert use left-edge anchors next to background labels.
     */
     @page {
       size: {{ page_width_mm }}mm {{ page_height_mm }}mm;
@@ -30,20 +33,19 @@
       overflow: hidden;
       background: #fff;
       color: #1A2B56;
-      font-family: 'Open Sans', sans-serif;
+      font-family: 'Open Sans', Arial, Helvetica, sans-serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     }
     .certificate-page {
-      position: relative;
+      position: absolute;
+      left: 50%;
+      top: 0;
+      transform: translateX(-50%);
       width: {{ cert_width_mm }}mm;
       height: {{ cert_height_mm }}mm;
-      overflow: hidden;
+      overflow: visible;
       background: #fff;
-      flex-shrink: 0;
     }
     .certificate-bg {
       position: absolute;
@@ -62,13 +64,14 @@
       overflow: visible;
     }
     /* Date / cert no sit to the right of background labels */
-    .field-left {
+    .field-meta {
       transform: translate(0, -50%);
       text-align: left !important;
       white-space: nowrap;
       width: auto !important;
-      max-width: 28%;
+      max-width: none;
       overflow: visible;
+      z-index: 5;
     }
     .field-nowrap {
       white-space: nowrap;
@@ -109,7 +112,7 @@
       top: {{ fields.certificate_title.y }}%;
       width: {{ fields.certificate_title.width }}%;
       font-size: {{ fields.certificate_title.font_size }}pt;
-      font-family: {{ fields.certificate_title.font_family }};
+      font-family: {{ fields.certificate_title.font_family | safe }};
       font-weight: {{ fields.certificate_title.font_weight }};
       color: {{ fields.certificate_title.text_color }};
       text-align: {{ fields.certificate_title.text_align }};
@@ -122,7 +125,7 @@
       top: {{ fields.company_name.y }}%;
       width: {{ fields.company_name.width }}%;
       font-size: {{ fields.company_name.font_size }}pt;
-      font-family: {{ fields.company_name.font_family }};
+      font-family: {{ fields.company_name.font_family | safe }};
       font-weight: {{ fields.company_name.font_weight }};
       color: {{ fields.company_name.text_color }};
       text-align: {{ fields.company_name.text_align }};
@@ -135,7 +138,7 @@
       top: {{ fields.training_centre_name.y }}%;
       width: {{ fields.training_centre_name.width }}%;
       font-size: {{ fields.training_centre_name.font_size }}pt;
-      font-family: {{ fields.training_centre_name.font_family }};
+      font-family: {{ fields.training_centre_name.font_family | safe }};
       font-weight: {{ fields.training_centre_name.font_weight }};
       color: {{ fields.training_centre_name.text_color }};
       text-align: {{ fields.training_centre_name.text_align }};
@@ -148,7 +151,7 @@
       top: {{ fields.candidate_name.y }}%;
       width: {{ fields.candidate_name.width }}%;
       font-size: {{ fields.candidate_name.font_size }}pt;
-      font-family: {{ fields.candidate_name.font_family }};
+      font-family: {{ fields.candidate_name.font_family | safe }};
       font-weight: {{ fields.candidate_name.font_weight }};
       color: {{ fields.candidate_name.text_color }};
       text-align: {{ fields.candidate_name.text_align }};
@@ -161,7 +164,7 @@
       top: {{ fields.certificate_description.y }}%;
       width: {{ fields.certificate_description.width }}%;
       font-size: {{ fields.certificate_description.font_size }}pt;
-      font-family: {{ fields.certificate_description.font_family }};
+      font-family: {{ fields.certificate_description.font_family | safe }};
       font-weight: {{ fields.certificate_description.font_weight }};
       color: {{ fields.certificate_description.text_color }};
       text-align: {{ fields.certificate_description.text_align }};
@@ -174,7 +177,7 @@
       top: {{ fields.address.y }}%;
       width: {{ fields.address.width }}%;
       font-size: {{ fields.address.font_size }}pt;
-      font-family: {{ fields.address.font_family }};
+      font-family: {{ fields.address.font_family | safe }};
       font-weight: {{ fields.address.font_weight }};
       color: {{ fields.address.text_color }};
       text-align: {{ fields.address.text_align }};
@@ -189,32 +192,33 @@
       top: {{ fields.driving_licence_number.y }}%;
       width: {{ fields.driving_licence_number.width }}%;
       font-size: {{ fields.driving_licence_number.font_size }}pt;
-      font-family: {{ fields.driving_licence_number.font_family }};
+      font-family: {{ fields.driving_licence_number.font_family | safe }};
       font-weight: {{ fields.driving_licence_number.font_weight }};
       color: {{ fields.driving_licence_number.text_color }};
       text-align: {{ fields.driving_licence_number.text_align }};
     ">{{ driving_licence_number }}</div>
     {% endif %}
 
-    {% if training_date and fields.training_date %}
-    <div class="field field-left" style="
+    {# Always emit date/cert when values exist — never gate on fragile field flags #}
+    {% if training_date %}
+    <div class="field field-meta" style="
       left: {{ fields.training_date.x }}%;
       top: {{ fields.training_date.y }}%;
-      font-size: {{ fields.training_date.font_size or 12 }}pt;
-      font-family: {{ fields.training_date.font_family or "'Open Sans', sans-serif" }};
-      font-weight: {{ fields.training_date.font_weight or '600' }};
-      color: {{ fields.training_date.text_color or '#1A2B56' }};
+      font-size: {{ fields.training_date.font_size }}pt;
+      font-family: {{ fields.training_date.font_family | safe }};
+      font-weight: {{ fields.training_date.font_weight }};
+      color: {{ fields.training_date.text_color }};
     ">{{ training_date }}</div>
     {% endif %}
 
-    {% if certificate_number and fields.certificate_number %}
-    <div class="field field-left" style="
+    {% if certificate_number %}
+    <div class="field field-meta" style="
       left: {{ fields.certificate_number.x }}%;
       top: {{ fields.certificate_number.y }}%;
-      font-size: {{ fields.certificate_number.font_size or 12 }}pt;
-      font-family: {{ fields.certificate_number.font_family or "'Open Sans', sans-serif" }};
-      font-weight: {{ fields.certificate_number.font_weight or '600' }};
-      color: {{ fields.certificate_number.text_color or '#1A2B56' }};
+      font-size: {{ fields.certificate_number.font_size }}pt;
+      font-family: {{ fields.certificate_number.font_family | safe }};
+      font-weight: {{ fields.certificate_number.font_weight }};
+      color: {{ fields.certificate_number.text_color }};
     ">{{ certificate_number }}</div>
     {% endif %}
 
@@ -238,7 +242,7 @@
       top: {{ fields.authorized_person_name.y }}%;
       width: {{ fields.authorized_person_name.width }}%;
       font-size: {{ fields.authorized_person_name.font_size }}pt;
-      font-family: {{ fields.authorized_person_name.font_family }};
+      font-family: {{ fields.authorized_person_name.font_family | safe }};
       font-weight: {{ fields.authorized_person_name.font_weight }};
       color: {{ fields.authorized_person_name.text_color }};
       text-align: {{ fields.authorized_person_name.text_align }};

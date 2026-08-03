@@ -71,22 +71,22 @@ def build_certificate_context(db: Session, certificate: Certificate) -> dict:
             else:
                 field_positions[key] = val
 
-    # Critical print fields — keep printable size/position (PDF used to drop these)
+    # Critical print fields — force safe print geometry (Playwright clips bottom-right
+    # when old center-anchored / cqw styles push date & cert no off the page).
     for key in ("training_date", "certificate_number"):
         default = DEFAULT_FIELD_POSITIONS[key]
         pos = field_positions.get(key) if isinstance(field_positions.get(key), dict) else {}
-        merged = {**default, **pos}
-        if float(merged.get("y") or 0) < 0 or float(merged.get("font_size") or 0) <= 0:
-            merged = default.copy()
-        # Left-edge anchor near labels; avoid old center-at-78% clipping in Playwright
-        if float(merged.get("x") or 0) >= 78:
-            merged["x"] = default["x"]
-            merged["y"] = default["y"]
-            merged["width"] = default["width"]
-        merged["text_align"] = "left"
-        if float(merged.get("font_size") or 0) < 10:
-            merged["font_size"] = default["font_size"]
-        field_positions[key] = merged
+        color = pos.get("text_color") or default["text_color"]
+        family = pos.get("font_family") or default["font_family"]
+        weight = pos.get("font_weight") or default["font_weight"]
+        field_positions[key] = {
+            **default,
+            "font_family": family,
+            "font_weight": weight,
+            "text_color": color,
+            "text_align": "left",
+            "font_size": max(float(pos.get("font_size") or 0), float(default["font_size"]), 12),
+        }
 
     bg_uri = None
     if template:
@@ -149,21 +149,22 @@ async def generate_pdf(db: Session, certificate: Certificate) -> str:
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         page = await browser.new_page()
-        await page.set_content(html, wait_until="networkidle")
-        # Wait for webfonts so PDF matches on-screen preview typography
+        # "load" is safer than networkidle (Google Fonts can stall offline servers)
+        await page.set_content(html, wait_until="load")
         try:
             await page.evaluate("() => document.fonts.ready")
         except Exception:
             pass
-        await page.wait_for_timeout(150)
+        await page.wait_for_timeout(250)
+        # prefer_css_page_size=False — avoid double-sizing that clips bottom fields
         await page.pdf(
             path=str(output_path),
             width=f"{paper['width_mm']}mm",
             height=f"{paper['height_mm']}mm",
             landscape=False,
             print_background=True,
-            margin={"top": "0", "right": "0", "bottom": "0", "left": "0"},
-            prefer_css_page_size=True,
+            margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
+            prefer_css_page_size=False,
         )
         await browser.close()
 
