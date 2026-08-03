@@ -15,6 +15,14 @@ from app.api.routes import auth, certificates, templates, dashboard, print_histo
 app_settings = get_settings()
 
 
+def resolve_existing_template_bg(relative_path: str | None):
+    if not relative_path:
+        return None
+    clean = relative_path.replace("..", "").lstrip("/\\")
+    full = BASE_DIR / clean
+    return full if full.exists() and full.is_file() else None
+
+
 def ensure_schema_patches() -> None:
     """Add columns that create_all won't add on existing SQLite tables."""
     with engine.begin() as conn:
@@ -65,10 +73,12 @@ def seed_database() -> None:
             db.refresh(settings_row)
 
         template = db.query(CertificateTemplate).first()
+        lucent_bg_rel = "uploads/templates/certificate_bg_from_pdf.png"
+        lucent_bg_abs = BASE_DIR / lucent_bg_rel
+        default_bg_abs = BASE_DIR / "uploads" / "templates" / "default_certificate_bg.png"
+
         if not template:
-            bg = BASE_DIR / "uploads" / "templates" / "certificate_bg_from_pdf.png"
-            if not bg.exists():
-                bg = BASE_DIR / "uploads" / "templates" / "default_certificate_bg.png"
+            bg = lucent_bg_abs if lucent_bg_abs.exists() else default_bg_abs
             if bg.exists():
                 relative = f"uploads/templates/{bg.name}"
                 template = CertificateTemplate(
@@ -82,11 +92,30 @@ def seed_database() -> None:
                 db.commit()
                 db.refresh(template)
         else:
-            # Keep default template aligned with Certificate.pdf artwork when present
-            lucent_bg = "uploads/templates/certificate_bg_from_pdf.png"
-            if (BASE_DIR / lucent_bg).exists():
-                if template.background_image_path != lucent_bg or template.template_name.startswith("Default"):
-                    template.background_image_path = lucent_bg
+            # Repair missing background file on disk (common after deploy without uploads/)
+            stored = resolve_existing_template_bg(template.background_image_path)
+            if not stored:
+                if lucent_bg_abs.exists():
+                    template.background_image_path = lucent_bg_rel
+                    template.template_name = "Lucent Defensive Driving Certificate"
+                    template.field_positions_json = dump_field_positions(DEFAULT_FIELD_POSITIONS)
+                    template.is_default = True
+                    template.is_active = True
+                    db.add(template)
+                    db.commit()
+                    db.refresh(template)
+                elif default_bg_abs.exists():
+                    template.background_image_path = f"uploads/templates/{default_bg_abs.name}"
+                    db.add(template)
+                    db.commit()
+                    db.refresh(template)
+            elif lucent_bg_abs.exists() and (
+                template.background_image_path != lucent_bg_rel
+                or template.template_name.startswith("Default")
+            ):
+                # Prefer Lucent artwork when present
+                if template.template_name.startswith("Default") or not stored:
+                    template.background_image_path = lucent_bg_rel
                     template.template_name = "Lucent Defensive Driving Certificate"
                     template.field_positions_json = dump_field_positions(DEFAULT_FIELD_POSITIONS)
                     template.is_default = True
