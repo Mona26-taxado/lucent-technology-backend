@@ -31,10 +31,14 @@ def _file_to_data_uri(path: Optional[Path]) -> Optional[str]:
 
 
 def _format_date(d, date_format: str) -> str:
+    """Always return a printable date string (never empty — empty skips PDF fields)."""
+    fallback = "%d.%m.%Y"
+    fmt = (date_format or "").strip() or fallback
     try:
-        return d.strftime(date_format)
+        out = d.strftime(fmt)
     except Exception:
-        return d.strftime("%d.%m.%Y")
+        out = d.strftime(fallback)
+    return out or d.strftime(fallback)
 
 
 def build_certificate_context(db: Session, certificate: Certificate) -> dict:
@@ -66,6 +70,23 @@ def build_certificate_context(db: Session, certificate: Certificate) -> dict:
                 field_positions[key] = {**field_positions[key], **val}
             else:
                 field_positions[key] = val
+
+    # Critical print fields — keep printable size/position (PDF used to drop these)
+    for key in ("training_date", "certificate_number"):
+        default = DEFAULT_FIELD_POSITIONS[key]
+        pos = field_positions.get(key) if isinstance(field_positions.get(key), dict) else {}
+        merged = {**default, **pos}
+        if float(merged.get("y") or 0) < 0 or float(merged.get("font_size") or 0) <= 0:
+            merged = default.copy()
+        # Left-edge anchor near labels; avoid old center-at-78% clipping in Playwright
+        if float(merged.get("x") or 0) >= 78:
+            merged["x"] = default["x"]
+            merged["y"] = default["y"]
+            merged["width"] = default["width"]
+        merged["text_align"] = "left"
+        if float(merged.get("font_size") or 0) < 10:
+            merged["font_size"] = default["font_size"]
+        field_positions[key] = merged
 
     bg_uri = None
     if template:

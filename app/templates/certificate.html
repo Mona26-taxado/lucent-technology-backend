@@ -9,10 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Open+Sans:wght@400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
   <style>
     /*
-      Same layout model as on-screen CertificatePreview:
-      - design aspect certificate box
-      - % positioning + centered transform
-      - font sizes in cqw (matches preview formula)
+      PDF print layout — use absolute pt fonts (Playwright-safe).
+      Preview uses the same % anchors; cqw is avoided here because it can
+      drop small fields (training date / cert no) in headless PDF.
     */
     @page {
       size: {{ page_width_mm }}mm {{ page_height_mm }}mm;
@@ -30,6 +29,8 @@
       padding: 0;
       overflow: hidden;
       background: #fff;
+      color: #1A2B56;
+      font-family: 'Open Sans', sans-serif;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
       display: flex;
@@ -43,8 +44,6 @@
       overflow: hidden;
       background: #fff;
       flex-shrink: 0;
-      container-type: inline-size;
-      container-name: certificate;
     }
     .certificate-bg {
       position: absolute;
@@ -56,32 +55,35 @@
     }
     .field {
       position: absolute;
-      z-index: 1;
+      z-index: 2;
       transform: translate(-50%, -50%);
       line-height: 1.375;
       word-wrap: break-word;
+      overflow: visible;
+    }
+    /* Date / cert no sit to the right of background labels */
+    .field-left {
+      transform: translate(0, -50%);
+      text-align: left !important;
+      white-space: nowrap;
+      width: auto !important;
+      max-width: 28%;
+      overflow: visible;
     }
     .field-nowrap {
-      width: auto !important;
-      max-width: var(--field-max-width, 20%);
       white-space: nowrap;
       word-wrap: normal;
       overflow: visible;
     }
     .field-img {
       position: absolute;
-      z-index: 1;
+      z-index: 2;
       transform: translate(-50%, -50%);
       object-fit: contain;
     }
   </style>
 </head>
 <body>
-  {# Convert pt → cqw using same formula as frontend preview #}
-  {% macro cqw(pt) -%}
-    {{ ((pt | float) * 0.352778 * 100 / (cert_width_mm | float)) | round(5) }}cqw
-  {%- endmacro %}
-
   <div class="certificate-page">
     {% if background_uri %}
     <img class="certificate-bg" src="{{ background_uri }}" alt="Certificate background" />
@@ -106,7 +108,7 @@
       left: {{ fields.certificate_title.x }}%;
       top: {{ fields.certificate_title.y }}%;
       width: {{ fields.certificate_title.width }}%;
-      font-size: {{ cqw(fields.certificate_title.font_size) }};
+      font-size: {{ fields.certificate_title.font_size }}pt;
       font-family: {{ fields.certificate_title.font_family }};
       font-weight: {{ fields.certificate_title.font_weight }};
       color: {{ fields.certificate_title.text_color }};
@@ -119,7 +121,7 @@
       left: {{ fields.company_name.x }}%;
       top: {{ fields.company_name.y }}%;
       width: {{ fields.company_name.width }}%;
-      font-size: {{ cqw(fields.company_name.font_size) }};
+      font-size: {{ fields.company_name.font_size }}pt;
       font-family: {{ fields.company_name.font_family }};
       font-weight: {{ fields.company_name.font_weight }};
       color: {{ fields.company_name.text_color }};
@@ -132,7 +134,7 @@
       left: {{ fields.training_centre_name.x }}%;
       top: {{ fields.training_centre_name.y }}%;
       width: {{ fields.training_centre_name.width }}%;
-      font-size: {{ cqw(fields.training_centre_name.font_size) }};
+      font-size: {{ fields.training_centre_name.font_size }}pt;
       font-family: {{ fields.training_centre_name.font_family }};
       font-weight: {{ fields.training_centre_name.font_weight }};
       color: {{ fields.training_centre_name.text_color }};
@@ -145,7 +147,7 @@
       left: {{ fields.candidate_name.x }}%;
       top: {{ fields.candidate_name.y }}%;
       width: {{ fields.candidate_name.width }}%;
-      font-size: {{ cqw(fields.candidate_name.font_size) }};
+      font-size: {{ fields.candidate_name.font_size }}pt;
       font-family: {{ fields.candidate_name.font_family }};
       font-weight: {{ fields.candidate_name.font_weight }};
       color: {{ fields.candidate_name.text_color }};
@@ -158,7 +160,7 @@
       left: {{ fields.certificate_description.x }}%;
       top: {{ fields.certificate_description.y }}%;
       width: {{ fields.certificate_description.width }}%;
-      font-size: {{ cqw(fields.certificate_description.font_size) }};
+      font-size: {{ fields.certificate_description.font_size }}pt;
       font-family: {{ fields.certificate_description.font_family }};
       font-weight: {{ fields.certificate_description.font_weight }};
       color: {{ fields.certificate_description.text_color }};
@@ -171,7 +173,7 @@
       left: {{ fields.address.x }}%;
       top: {{ fields.address.y }}%;
       width: {{ fields.address.width }}%;
-      font-size: {{ cqw(fields.address.font_size) }};
+      font-size: {{ fields.address.font_size }}pt;
       font-family: {{ fields.address.font_family }};
       font-weight: {{ fields.address.font_weight }};
       color: {{ fields.address.text_color }};
@@ -185,8 +187,8 @@
     <div class="field field-nowrap" style="
       left: {{ fields.driving_licence_number.x }}%;
       top: {{ fields.driving_licence_number.y }}%;
-      --field-max-width: {{ fields.driving_licence_number.width }}%;
-      font-size: {{ cqw(fields.driving_licence_number.font_size) }};
+      width: {{ fields.driving_licence_number.width }}%;
+      font-size: {{ fields.driving_licence_number.font_size }}pt;
       font-family: {{ fields.driving_licence_number.font_family }};
       font-weight: {{ fields.driving_licence_number.font_weight }};
       color: {{ fields.driving_licence_number.text_color }};
@@ -195,28 +197,24 @@
     {% endif %}
 
     {% if training_date and fields.training_date %}
-    <div class="field field-nowrap" style="
+    <div class="field field-left" style="
       left: {{ fields.training_date.x }}%;
       top: {{ fields.training_date.y }}%;
-      --field-max-width: {{ fields.training_date.width }}%;
-      font-size: {{ cqw(fields.training_date.font_size) }};
-      font-family: {{ fields.training_date.font_family }};
-      font-weight: {{ fields.training_date.font_weight }};
-      color: {{ fields.training_date.text_color }};
-      text-align: {{ fields.training_date.text_align }};
+      font-size: {{ fields.training_date.font_size or 12 }}pt;
+      font-family: {{ fields.training_date.font_family or "'Open Sans', sans-serif" }};
+      font-weight: {{ fields.training_date.font_weight or '600' }};
+      color: {{ fields.training_date.text_color or '#1A2B56' }};
     ">{{ training_date }}</div>
     {% endif %}
 
     {% if certificate_number and fields.certificate_number %}
-    <div class="field field-nowrap" style="
+    <div class="field field-left" style="
       left: {{ fields.certificate_number.x }}%;
       top: {{ fields.certificate_number.y }}%;
-      --field-max-width: {{ fields.certificate_number.width }}%;
-      font-size: {{ cqw(fields.certificate_number.font_size) }};
-      font-family: {{ fields.certificate_number.font_family }};
-      font-weight: {{ fields.certificate_number.font_weight }};
-      color: {{ fields.certificate_number.text_color }};
-      text-align: {{ fields.certificate_number.text_align }};
+      font-size: {{ fields.certificate_number.font_size or 12 }}pt;
+      font-family: {{ fields.certificate_number.font_family or "'Open Sans', sans-serif" }};
+      font-weight: {{ fields.certificate_number.font_weight or '600' }};
+      color: {{ fields.certificate_number.text_color or '#1A2B56' }};
     ">{{ certificate_number }}</div>
     {% endif %}
 
@@ -239,7 +237,7 @@
       left: {{ fields.authorized_person_name.x }}%;
       top: {{ fields.authorized_person_name.y }}%;
       width: {{ fields.authorized_person_name.width }}%;
-      font-size: {{ cqw(fields.authorized_person_name.font_size) }};
+      font-size: {{ fields.authorized_person_name.font_size }}pt;
       font-family: {{ fields.authorized_person_name.font_family }};
       font-weight: {{ fields.authorized_person_name.font_weight }};
       color: {{ fields.authorized_person_name.text_color }};

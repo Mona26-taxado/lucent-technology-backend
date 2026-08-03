@@ -8,7 +8,7 @@ from app.core.config import get_settings, BASE_DIR
 from app.core.database import engine, Base, SessionLocal
 from app.core.security import get_password_hash
 from app.models import User, ApplicationSettings, CertificateTemplate
-from app.services.file_service import ensure_directories, dump_field_positions
+from app.services.file_service import ensure_directories, dump_field_positions, parse_field_positions
 from app.schemas.template import DEFAULT_FIELD_POSITIONS
 from app.api.routes import auth, certificates, templates, dashboard, print_history, settings, files, backup
 
@@ -123,6 +123,36 @@ def seed_database() -> None:
                     db.add(template)
                     db.commit()
                     db.refresh(template)
+
+        # Keep critical print fields aligned with code defaults (date/cert no often
+        # vanish in PDF when older template JSON used center-anchor + cqw near the edge).
+        if template:
+            stored_positions = parse_field_positions(template.field_positions_json)
+            changed = False
+            for key in ("training_date", "certificate_number"):
+                desired = DEFAULT_FIELD_POSITIONS[key]
+                current = stored_positions.get(key) if isinstance(stored_positions.get(key), dict) else {}
+                # Refresh if missing, off-canvas, or still on pre-fix right-edge coords
+                needs_refresh = (
+                    not current
+                    or float(current.get("y") or 0) < 0
+                    or float(current.get("x") or 0) >= 78
+                    or current.get("text_align") != "left"
+                )
+                if needs_refresh:
+                    stored_positions[key] = {**desired, **{k: v for k, v in current.items() if k in ("font_family", "font_weight", "text_color") and v}}
+                    stored_positions[key].update({
+                        "x": desired["x"],
+                        "y": desired["y"],
+                        "width": desired["width"],
+                        "font_size": desired["font_size"],
+                        "text_align": "left",
+                    })
+                    changed = True
+            if changed:
+                template.field_positions_json = dump_field_positions(stored_positions)
+                db.add(template)
+                db.commit()
 
         if settings_row and template and not settings_row.default_template_id:
             settings_row.default_template_id = template.id
