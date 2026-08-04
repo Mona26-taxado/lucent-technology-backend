@@ -1,8 +1,10 @@
 from datetime import date
 from typing import Optional
+import io
+import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -18,7 +20,7 @@ from app.schemas.certificate import (
 from app.schemas.dashboard import MessageResponse
 from app.services import certificate_service
 from app.services.numbering_service import peek_next_number, get_or_create_settings
-from app.services.file_service import save_upload, resolve_file_path
+from app.services.file_service import save_upload, resolve_file_path, safe_pdf_filename
 from app.services.pdf_service import generate_pdf
 
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
@@ -67,6 +69,80 @@ def search_certificates(
     return CertificateListResponse(**result)
 
 
+@router.get("/bulk-download")
+async def bulk_download_certificates(
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    training_date: Optional[date] = None,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download a ZIP of certificate PDFs filtered by training date."""
+    if not training_date and not date_from and not date_to:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Select a training date, or a date from / date to range",
+        )
+
+    certs = certificate_service.list_certificates_by_date(
+        db,
+        date_from=date_from,
+        date_to=date_to,
+        training_date=training_date,
+        limit=500,
+    )
+    if not certs:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No certificates found for the selected date filter",
+        )
+
+    buffer = io.BytesIO()
+    used_names: set[str] = set()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for cert in certs:
+            # Ensure PDF exists (regenerate if missing on disk)
+            path = resolve_file_path(cert.pdf_path) if cert.pdf_path else None
+            if not path or not path.exists():
+                try:
+                    await generate_pdf(db, cert)
+                    cert = certificate_service.get_certificate(db, cert.id)
+                    path = resolve_file_path(cert.pdf_path)
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=f"PDF failed for {cert.certificate_number}: {e}",
+                    ) from e
+            if not path or not path.exists():
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"PDF missing for {cert.certificate_number}",
+                )
+
+            arcname = safe_pdf_filename(cert.certificate_number, cert.candidate_name)
+            if arcname in used_names:
+                stem = arcname[:-4] if arcname.lower().endswith(".pdf") else arcname
+                arcname = f"{stem}-{cert.id}.pdf"
+            used_names.add(arcname)
+            zf.write(str(path), arcname)
+
+    buffer.seek(0)
+    if training_date:
+        stamp = training_date.isoformat()
+    elif date_from and date_to:
+        stamp = f"{date_from.isoformat()}_to_{date_to.isoformat()}"
+    elif date_from:
+        stamp = f"from_{date_from.isoformat()}"
+    else:
+        stamp = f"to_{date_to.isoformat()}"
+    filename = f"certificates-{stamp}.zip"
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("", response_model=CertificateListResponse)
 def list_certificates(
     page: int = Query(1, ge=1),
@@ -79,7 +155,6 @@ def list_certificates(
         db, page=page, page_size=page_size, print_status=print_status
     )
     return CertificateListResponse(**result)
-
 
 @router.post("", response_model=CertificateOut, status_code=status.HTTP_201_CREATED)
 def create_certificate(

@@ -64,6 +64,15 @@
       overflow: visible;
       z-index: 20;
     }
+    /* Address: fixed left start, wraps for long text (no center shift) */
+    .field-left-wrap {
+      transform: translate(0, -50%) !important;
+      text-align: left !important;
+      white-space: normal !important;
+      word-wrap: break-word;
+      overflow: visible;
+      z-index: 20;
+    }
     .field-nowrap {
       white-space: nowrap;
       word-wrap: normal;
@@ -163,15 +172,16 @@
     {% endif %}
 
     {% if address and fields.address %}
-    <div class="field" style="
+    <div class="field field-left-wrap" style="
       left: {{ fields.address.x }}%;
       top: {{ fields.address.y }}%;
       width: {{ fields.address.width }}%;
+      max-width: {{ fields.address.width }}%;
       font-size: {{ fields.address.font_size }}pt;
       font-family: {{ fields.address.font_family | safe }};
       font-weight: {{ fields.address.font_weight }};
       color: {{ fields.address.text_color }};
-      text-align: {{ fields.address.text_align }};
+      text-align: left;
       text-decoration: {{ fields.address.text_decoration | default('underline') }};
       text-underline-offset: 0.18em;
     ">{{ address }}</div>

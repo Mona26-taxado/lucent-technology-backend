@@ -25,9 +25,19 @@ class Settings(BaseSettings):
     GENERATED_DIR: str = "generated/certificates"
     MAX_UPLOAD_SIZE_MB: int = 10
 
-    DEFAULT_ADMIN_USERNAME: str = "admin"
+    DEFAULT_ADMIN_USERNAME: str = "Lucenttechnology01@gmail.com"
     DEFAULT_ADMIN_PASSWORD: str = "admin123"
     DEFAULT_ADMIN_FULL_NAME: str = "System Administrator"
+
+    # Email OTP login (password login disabled)
+    LOGIN_EMAIL: str = "Lucenttechnology01@gmail.com"
+    OTP_EXPIRE_MINUTES: int = 10
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = "Lucenttechnology01@gmail.com"
+    SMTP_PASSWORD: str = ""  # Gmail App Password required
+    SMTP_FROM: str = "Lucenttechnology01@gmail.com"
+    SMTP_USE_TLS: bool = True
 
     ALLOWED_IMAGE_EXTENSIONS: set = {".png", ".jpg", ".jpeg"}
     ALLOWED_IMAGE_MIMES: set = {"image/png", "image/jpeg", "image/jpg"}

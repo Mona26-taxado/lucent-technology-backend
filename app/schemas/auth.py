@@ -13,6 +13,28 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RequestOtpRequest(BaseModel):
+    email: str
+
+
+class VerifyOtpRequest(BaseModel):
+    email: str
+    otp: str = Field(min_length=4, max_length=10)
+
+
+class LoginConfigOut(BaseModel):
+    login_email: str
+    otp_length: int = 6
+    # True when backend will show OTP on screen (local / no SMTP)
+    dev_otp_mode: bool = False
+
+
+class OtpSentResponse(BaseModel):
+    message: str
+    # Only populated in DEBUG when SMTP is not configured — never in production with SMTP
+    dev_otp: Optional[str] = None
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str = Field(min_length=6)

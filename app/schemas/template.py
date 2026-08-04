@@ -28,14 +28,14 @@ DEFAULT_FIELD_POSITIONS = {
         "text_align": "center",
     },
     "address": {
-        "x": 53,
+        "x": 37,
         "y": 66,
-        "width": 62,
-        "font_size": 15.34,
+        "width": 60,
+        "font_size": 12.5,
         "font_family": "'Open Sans', sans-serif",
         "font_weight": "600",
         "text_color": "#1A2B56",
-        "text_align": "center",
+        "text_align": "left",
         "text_decoration": "underline",
     },
     "training_date": {

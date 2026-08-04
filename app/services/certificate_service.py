@@ -163,6 +163,24 @@ def list_certificates(
     return {"items": items, "total": total, "page": page, "page_size": page_size, "pages": pages}
 
 
+def list_certificates_by_date(
+    db: Session,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    training_date: Optional[date] = None,
+    limit: int = 500,
+) -> list[Certificate]:
+    """All certificates matching a training-date filter (for bulk export)."""
+    query = db.query(Certificate)
+    if training_date:
+        query = query.filter(Certificate.training_date == training_date)
+    if date_from:
+        query = query.filter(Certificate.training_date >= date_from)
+    if date_to:
+        query = query.filter(Certificate.training_date <= date_to)
+    return query.order_by(Certificate.training_date.asc(), Certificate.id.asc()).limit(limit).all()
+
+
 def mark_printed(db: Session, cert_id: int, user_id: int) -> Certificate:
     cert = get_certificate(db, cert_id)
     cert.print_status = "printed"

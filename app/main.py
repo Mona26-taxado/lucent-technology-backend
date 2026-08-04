@@ -43,17 +43,24 @@ def seed_database() -> None:
     ensure_directories()
     db = SessionLocal()
     try:
-        admin = db.query(User).filter(User.username == app_settings.DEFAULT_ADMIN_USERNAME).first()
+        login_email = (app_settings.LOGIN_EMAIL or app_settings.DEFAULT_ADMIN_USERNAME).strip()
+        admin = db.query(User).filter(User.username == login_email).first()
         if not admin:
-            admin = User(
-                username=app_settings.DEFAULT_ADMIN_USERNAME,
-                password_hash=get_password_hash(app_settings.DEFAULT_ADMIN_PASSWORD),
-                full_name=app_settings.DEFAULT_ADMIN_FULL_NAME,
-                role="admin",
-                is_active=True,
-            )
-            db.add(admin)
-            db.commit()
+            legacy = db.query(User).filter(User.username == "admin").first()
+            if legacy:
+                legacy.username = login_email
+                db.add(legacy)
+                db.commit()
+            else:
+                admin = User(
+                    username=login_email,
+                    password_hash=get_password_hash(app_settings.DEFAULT_ADMIN_PASSWORD),
+                    full_name=app_settings.DEFAULT_ADMIN_FULL_NAME,
+                    role="admin",
+                    is_active=True,
+                )
+                db.add(admin)
+                db.commit()
 
         settings_row = db.query(ApplicationSettings).first()
         if not settings_row:
