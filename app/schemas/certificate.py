@@ -89,3 +89,7 @@ class CertificateSearchParams(BaseModel):
     date_from: Optional[date] = None
     date_to: Optional[date] = None
     print_status: Optional[str] = None
+
+
+class BulkDeleteRequest(BaseModel):
+    ids: list[int] = Field(min_length=1)

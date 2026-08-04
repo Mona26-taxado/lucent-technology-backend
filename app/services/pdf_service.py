@@ -209,3 +209,115 @@ async def generate_pdf(db: Session, certificate: Certificate) -> str:
     db.commit()
     db.refresh(certificate)
     return relative
+
+
+async def _render_one_pdf_on_page(page, db: Session, certificate: Certificate, paper: dict) -> Path:
+    """Render one certificate PDF using an already-open Playwright page (fast for bulk)."""
+    html = render_certificate_html(db, certificate)
+    ctx = build_certificate_context(db, certificate)
+    ctx_date = ctx["training_date"]
+    ctx_number = ctx["certificate_number"]
+    date_pos = ctx["fields"]["training_date"]
+    cert_pos = ctx["fields"]["certificate_number"]
+    settings.generated_path.mkdir(parents=True, exist_ok=True)
+
+    filename = safe_pdf_filename(certificate.certificate_number, certificate.candidate_name)
+    output_path = settings.generated_path / filename
+
+    await page.set_content(html, wait_until="domcontentloaded")
+    try:
+        await page.evaluate("() => document.fonts.ready")
+    except Exception:
+        pass
+    await page.evaluate(
+        """([dateText, certNo, datePos, certPos]) => {
+          const dateEl = document.getElementById('print-training-date');
+          const certEl = document.getElementById('print-certificate-number');
+          if (dateEl) {
+            if (!dateEl.textContent || !dateEl.textContent.trim()) dateEl.textContent = dateText;
+            dateEl.style.left = datePos.x + '%';
+            dateEl.style.top = datePos.y + '%';
+            dateEl.style.maxWidth = (datePos.width || 22) + '%';
+            dateEl.style.fontSize = (datePos.font_size || 10.5) + 'pt';
+            dateEl.style.fontFamily = datePos.font_family || "'Open Sans', Arial, Helvetica, sans-serif";
+            dateEl.style.fontWeight = String(datePos.font_weight || '700');
+            dateEl.style.color = datePos.text_color || '#1A2B56';
+            dateEl.style.textAlign = 'left';
+            dateEl.style.visibility = 'visible';
+            dateEl.style.opacity = '1';
+            dateEl.style.display = 'block';
+            dateEl.style.zIndex = '99';
+          }
+          if (certEl) {
+            if (!certEl.textContent || !certEl.textContent.trim()) certEl.textContent = certNo;
+            certEl.style.left = certPos.x + '%';
+            certEl.style.top = certPos.y + '%';
+            certEl.style.maxWidth = (certPos.width || 22) + '%';
+            certEl.style.fontSize = (certPos.font_size || 12.7) + 'pt';
+            certEl.style.fontFamily = certPos.font_family || "'Open Sans', Arial, Helvetica, sans-serif";
+            certEl.style.fontWeight = String(certPos.font_weight || '700');
+            certEl.style.color = certPos.text_color || '#1A2B56';
+            certEl.style.textAlign = 'left';
+            certEl.style.visibility = 'visible';
+            certEl.style.opacity = '1';
+            certEl.style.display = 'block';
+            certEl.style.zIndex = '99';
+          }
+        }""",
+        [ctx_date, ctx_number, date_pos, cert_pos],
+    )
+    await page.wait_for_timeout(80)
+    await page.pdf(
+        path=str(output_path),
+        width=f"{paper['width_mm']}mm",
+        height=f"{paper['height_mm']}mm",
+        landscape=False,
+        print_background=True,
+        margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
+        prefer_css_page_size=True,
+        page_ranges="1",
+    )
+
+    relative = f"generated/certificates/{filename}"
+    certificate.pdf_path = relative
+    db.add(certificate)
+    db.commit()
+    db.refresh(certificate)
+    return output_path
+
+
+async def generate_missing_pdfs_batch(db: Session, certificates: list[Certificate]) -> dict[int, Path]:
+    """Generate only missing PDFs with one shared Chromium browser (much faster for bulk ZIP)."""
+    from playwright.async_api import async_playwright
+
+    app_settings = get_or_create_settings(db)
+    paper = get_paper_size(getattr(app_settings, "paper_size", None) or DEFAULT_PAPER_SIZE)
+    viewport_w = int(round(paper["width_mm"] / 25.4 * 96))
+    viewport_h = int(round(paper["height_mm"] / 25.4 * 96))
+
+    results: dict[int, Path] = {}
+    missing: list[Certificate] = []
+
+    for cert in certificates:
+        path = resolve_file_path(cert.pdf_path) if cert.pdf_path else None
+        if path and path.exists():
+            results[cert.id] = path
+        else:
+            missing.append(cert)
+
+    if not missing:
+        return results
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            args=["--disable-dev-shm-usage", "--no-sandbox"],
+        )
+        page = await browser.new_page(viewport={"width": viewport_w, "height": viewport_h})
+        try:
+            for cert in missing:
+                path = await _render_one_pdf_on_page(page, db, cert, paper)
+                results[cert.id] = path
+        finally:
+            await browser.close()
+
+    return results

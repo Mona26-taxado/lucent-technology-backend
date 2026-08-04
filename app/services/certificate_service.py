@@ -113,8 +113,22 @@ def get_certificate(db: Session, cert_id: int) -> Certificate:
 
 def delete_certificate(db: Session, cert_id: int) -> None:
     cert = get_certificate(db, cert_id)
+    db.query(PrintHistory).filter(PrintHistory.certificate_id == cert_id).delete()
     db.delete(cert)
     db.commit()
+
+
+def bulk_delete_certificates(db: Session, ids: list[int]) -> int:
+    if not ids:
+        return 0
+    db.query(PrintHistory).filter(PrintHistory.certificate_id.in_(ids)).delete(synchronize_session=False)
+    deleted = (
+        db.query(Certificate)
+        .filter(Certificate.id.in_(ids))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return int(deleted)
 
 
 def list_certificates(

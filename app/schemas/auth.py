@@ -15,6 +15,7 @@ class LoginRequest(BaseModel):
 
 class RequestOtpRequest(BaseModel):
     email: str
+    password: str
 
 
 class VerifyOtpRequest(BaseModel):
@@ -23,7 +24,6 @@ class VerifyOtpRequest(BaseModel):
 
 
 class LoginConfigOut(BaseModel):
-    login_email: str
     otp_length: int = 6
     # True when backend will show OTP on screen (local / no SMTP)
     dev_otp_mode: bool = False

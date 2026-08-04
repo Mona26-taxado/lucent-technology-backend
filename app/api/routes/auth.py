@@ -27,48 +27,36 @@ def _normalize_email(email: str) -> str:
     return (email or "").strip().lower()
 
 
-def _allowed_login_email() -> str:
-    return _normalize_email(settings.LOGIN_EMAIL or settings.DEFAULT_ADMIN_USERNAME)
-
-
 def _dev_otp_mode() -> bool:
     """Local login without Gmail: DEBUG on and SMTP not set."""
     return bool(settings.DEBUG) and not smtp_configured()
 
 
-def _get_or_create_login_user(db: Session) -> User:
-    """Resolve the single admin user allowed to log in via OTP."""
-    email = _allowed_login_email()
-    user = db.query(User).filter(User.username == email).first()
-    if user:
-        return user
+def _find_user_by_email(db: Session, email: str) -> User | None:
+    """Match login email against username (case-insensitive)."""
+    email = _normalize_email(email)
+    users = db.query(User).all()
+    for user in users:
+        if _normalize_email(user.username) == email:
+            return user
+    return None
 
-    # Migrate legacy "admin" username to login email
-    legacy = db.query(User).filter(User.username == "admin").first()
-    if legacy:
-        legacy.username = email
-        db.add(legacy)
-        db.commit()
-        db.refresh(legacy)
-        return legacy
 
-    user = User(
-        username=email,
-        password_hash=get_password_hash(settings.DEFAULT_ADMIN_PASSWORD),
-        full_name=settings.DEFAULT_ADMIN_FULL_NAME,
-        role="admin",
-        is_active=True,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+def _authenticate_user(db: Session, email: str, password: str) -> User:
+    user = _find_user_by_email(db, email)
+    if not user or not verify_password(password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect email or password",
+        )
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
     return user
 
 
 @router.get("/login-config", response_model=LoginConfigOut)
 def login_config():
     return LoginConfigOut(
-        login_email=settings.LOGIN_EMAIL,
         otp_length=6,
         dev_otp_mode=_dev_otp_mode(),
     )
@@ -77,12 +65,13 @@ def login_config():
 @router.post("/request-otp", response_model=OtpSentResponse)
 def request_otp(data: RequestOtpRequest, db: Session = Depends(get_db)):
     email = _normalize_email(data.email)
-    allowed = _allowed_login_email()
-    if email != allowed:
+    if not email or not data.password:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This email is not authorized to sign in",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email and password are required",
         )
+
+    user = _authenticate_user(db, email, data.password)
 
     allowed_resend, wait = can_resend(email)
     if not allowed_resend:
@@ -91,45 +80,37 @@ def request_otp(data: RequestOtpRequest, db: Session = Depends(get_db)):
             detail=f"Please wait {wait} seconds before requesting another OTP",
         )
 
-    user = _get_or_create_login_user(db)
-    if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
-
     code = generate_otp(6)
     save_otp(email, code, ttl_seconds=settings.OTP_EXPIRE_MINUTES * 60)
 
     # Local / DEBUG: no SMTP → show OTP on screen (and log)
     if _dev_otp_mode():
-        print(f"\n=== LOCAL LOGIN OTP for {settings.LOGIN_EMAIL}: {code} ===\n", flush=True)
+        print(f"\n=== LOCAL LOGIN OTP for {email}: {code} ===\n", flush=True)
         return OtpSentResponse(
             message=f"Local mode: use OTP {code} (email not sent)",
             dev_otp=code,
         )
 
     try:
-        send_login_otp_email(settings.LOGIN_EMAIL, code)
+        send_login_otp_email(user.username if "@" in user.username else email, code)
     except RuntimeError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
 
     return OtpSentResponse(message="OTP sent to your email")
 
+
 @router.post("/verify-otp", response_model=Token)
 def verify_otp_login(data: VerifyOtpRequest, db: Session = Depends(get_db)):
     email = _normalize_email(data.email)
-    allowed = _allowed_login_email()
-    if email != allowed:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="This email is not authorized to sign in",
-        )
-
     if not verify_otp(email, data.otp):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired OTP",
         )
 
-    user = _get_or_create_login_user(db)
+    user = _find_user_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User account is inactive")
 

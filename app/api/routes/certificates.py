@@ -16,12 +16,13 @@ from app.schemas.certificate import (
     CertificateOut,
     CertificateListResponse,
     NextNumberResponse,
+    BulkDeleteRequest,
 )
 from app.schemas.dashboard import MessageResponse
 from app.services import certificate_service
 from app.services.numbering_service import peek_next_number, get_or_create_settings
 from app.services.file_service import save_upload, resolve_file_path, safe_pdf_filename
-from app.services.pdf_service import generate_pdf
+from app.services.pdf_service import generate_pdf, generate_missing_pdfs_batch
 
 router = APIRouter(prefix="/certificates", tags=["Certificates"])
 
@@ -77,7 +78,10 @@ async def bulk_download_certificates(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Download a ZIP of certificate PDFs filtered by training date."""
+    """Download a ZIP of certificate PDFs filtered by training date.
+
+    Existing PDFs are reused; missing ones are generated with one shared browser.
+    """
     if not training_date and not date_from and not date_to:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -97,22 +101,22 @@ async def bulk_download_certificates(
             detail="No certificates found for the selected date filter",
         )
 
+    try:
+        path_by_id = await generate_missing_pdfs_batch(db, certs)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Bulk PDF generation failed: {e}",
+        ) from e
+
+    # PDFs are already compressed — STORE is much faster than DEFLATE
     buffer = io.BytesIO()
     used_names: set[str] = set()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as zf:
         for cert in certs:
-            # Ensure PDF exists (regenerate if missing on disk)
-            path = resolve_file_path(cert.pdf_path) if cert.pdf_path else None
+            path = path_by_id.get(cert.id)
             if not path or not path.exists():
-                try:
-                    await generate_pdf(db, cert)
-                    cert = certificate_service.get_certificate(db, cert.id)
-                    path = resolve_file_path(cert.pdf_path)
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=f"PDF failed for {cert.certificate_number}: {e}",
-                    ) from e
+                path = resolve_file_path(cert.pdf_path) if cert.pdf_path else None
             if not path or not path.exists():
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -126,7 +130,6 @@ async def bulk_download_certificates(
             used_names.add(arcname)
             zf.write(str(path), arcname)
 
-    buffer.seek(0)
     if training_date:
         stamp = training_date.isoformat()
     elif date_from and date_to:
@@ -141,6 +144,16 @@ async def bulk_download_certificates(
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.post("/bulk-delete", response_model=MessageResponse)
+def bulk_delete_certificates(
+    data: BulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    deleted = certificate_service.bulk_delete_certificates(db, data.ids)
+    return MessageResponse(message=f"Deleted {deleted} certificate(s)")
 
 
 @router.get("", response_model=CertificateListResponse)
