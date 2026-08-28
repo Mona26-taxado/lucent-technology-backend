@@ -40,6 +40,17 @@ class ChangePasswordRequest(BaseModel):
     new_password: str = Field(min_length=6)
 
 
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    otp: str = Field(min_length=4, max_length=10)
+    new_password: str = Field(min_length=6)
+    confirm_password: str = Field(min_length=6)
+
+
 class UserOut(BaseModel):
     id: int
     username: str
