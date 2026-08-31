@@ -24,7 +24,7 @@
       margin: 0;
       padding: 0;
       overflow: hidden;
-      background: #fff;
+      background: #1A2B56;
       color: #1A2B56;
       font-family: 'Open Sans', Arial, Helvetica, sans-serif;
       -webkit-print-color-adjust: exact;
@@ -37,13 +37,15 @@
       width: {{ page_width_mm }}mm;
       height: {{ page_height_mm }}mm;
       overflow: hidden;
-      background: #fff;
+      background: #1A2B56;
     }
     .certificate-bg {
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
+      left: 50%;
+      top: 50%;
+      width: {{ (bg_bleed_scale * 100)|round(2) }}%;
+      height: {{ (bg_bleed_scale * 100)|round(2) }}%;
+      transform: translate(-50%, -50%);
       object-fit: fill;
       z-index: 0;
     }

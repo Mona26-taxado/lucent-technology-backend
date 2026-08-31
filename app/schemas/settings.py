@@ -33,7 +33,7 @@ class SettingsOut(BaseModel):
     date_format: str
     default_address: Optional[str] = None
     pdf_storage_directory: str
-    paper_size: str = "a4"
+    paper_size: str = "9.5x13"
     updated_at: datetime
 
     class Config:

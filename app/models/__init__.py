@@ -120,7 +120,7 @@ class ApplicationSettings(Base):
     pdf_storage_directory: Mapped[str] = mapped_column(
         String(500), default="generated/certificates", nullable=False
     )
-    paper_size: Mapped[str] = mapped_column(String(20), default="a4", nullable=False)
+    paper_size: Mapped[str] = mapped_column(String(20), default="9.5x13", nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )

@@ -17,7 +17,7 @@ def get_or_create_settings(db: Session) -> ApplicationSettings:
             number_padding=7,
             date_format="%d.%m.%Y",
             pdf_storage_directory="generated/certificates",
-            paper_size="a4",
+            paper_size="9.5x13",
         )
         db.add(settings)
         db.commit()
@@ -25,7 +25,7 @@ def get_or_create_settings(db: Session) -> ApplicationSettings:
     # Ensure paper_size column/value exists for older DBs
     if not getattr(settings, "paper_size", None):
         try:
-            settings.paper_size = "a4"
+            settings.paper_size = "9.5x13"
             db.add(settings)
             db.commit()
             db.refresh(settings)

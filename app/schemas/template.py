@@ -29,7 +29,7 @@ DEFAULT_FIELD_POSITIONS = {
     },
     "address": {
         "x": 37,
-        "y": 66,
+        "y": 67,
         "width": 60,
         "font_size": 12.5,
         "font_family": "'Open Sans', sans-serif",
@@ -40,7 +40,7 @@ DEFAULT_FIELD_POSITIONS = {
     },
     "training_date": {
         "x": 74,
-        "y": 84.2,
+        "y": 86.5,
         "width": 22,
         "font_size": 10.5,
         "font_family": "'Open Sans', Arial, Helvetica, sans-serif",
@@ -50,7 +50,7 @@ DEFAULT_FIELD_POSITIONS = {
     },
     "certificate_number": {
         "x": 73,
-        "y": 89.2,
+        "y": 92.5,
         "width": 22,
         "font_size": 12.7,
         "font_family": "'Open Sans', Arial, Helvetica, sans-serif",

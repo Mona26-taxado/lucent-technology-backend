@@ -5,7 +5,12 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.core.page_size import get_paper_size, fit_certificate_mm, DEFAULT_PAPER_SIZE
+from app.core.page_size import (
+    get_paper_size,
+    fit_certificate_mm,
+    DEFAULT_PAPER_SIZE,
+    CERTIFICATE_BG_BLEED_SCALE,
+)
 from app.models import Certificate, CertificateTemplate
 from app.services.file_service import resolve_file_path, safe_pdf_filename, parse_field_positions
 from app.services.numbering_service import get_or_create_settings
@@ -109,6 +114,7 @@ def build_certificate_context(db: Session, certificate: Certificate) -> dict:
         "cert_width_mm": cert_w,
         "cert_height_mm": cert_h,
         "paper_size": getattr(app_settings, "paper_size", None) or DEFAULT_PAPER_SIZE,
+        "bg_bleed_scale": CERTIFICATE_BG_BLEED_SCALE,
     }
 
 

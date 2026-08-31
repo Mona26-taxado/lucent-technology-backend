@@ -73,7 +73,7 @@ def seed_database() -> None:
                 number_padding=7,
                 date_format="%d.%m.%Y",
                 pdf_storage_directory="generated/certificates",
-                paper_size="a4",
+                paper_size="9.5x13",
             )
             db.add(settings_row)
             db.commit()

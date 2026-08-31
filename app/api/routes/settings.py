@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.page_size import PAPER_SIZES, DEFAULT_PAPER_SIZE
+from app.core.page_size import (
+    PAPER_SIZES,
+    DEFAULT_PAPER_SIZE,
+    CERTIFICATE_NATIVE_WIDTH_MM,
+    CERTIFICATE_NATIVE_HEIGHT_MM,
+)
 from app.api.deps import get_current_user
 from app.models import User
 from app.schemas.settings import SettingsOut, SettingsUpdate
@@ -13,6 +18,21 @@ from app.core.security import verify_password, get_password_hash
 from app.schemas.auth import ChangePasswordRequest
 
 router = APIRouter(prefix="/settings", tags=["Settings"])
+
+
+@router.get("/paper-sizes")
+def list_paper_sizes(
+    current_user: User = Depends(get_current_user),
+):
+    """Exact PDF print dimensions (backend source of truth)."""
+    return {
+        "default": DEFAULT_PAPER_SIZE,
+        "certificate_native_mm": {
+            "width": CERTIFICATE_NATIVE_WIDTH_MM,
+            "height": CERTIFICATE_NATIVE_HEIGHT_MM,
+        },
+        "sizes": {key: paper for key, paper in PAPER_SIZES.items()},
+    }
 
 
 @router.get("", response_model=SettingsOut)
