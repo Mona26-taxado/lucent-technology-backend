@@ -9,4 +9,7 @@ uploads/*
 !uploads/**/.gitkeep
 !uploads/templates/default_certificate_bg.png
 !uploads/templates/certificate_bg_from_pdf.png
+!uploads/medical/globe-logo.png
+!uploads/medical/globe-title.png
+!uploads/medical/lucent-on-form.png
 .DS_Store

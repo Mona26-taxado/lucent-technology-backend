@@ -16,6 +16,7 @@ LOGO_CANDIDATES = [
     BASE_DIR.parent / "frontend" / "public" / "medical" / "globe-logo.png",
 ]
 LUCENT_CANDIDATES = [
+    BASE_DIR / "uploads" / "medical" / "lucent-on-form.png",
     BASE_DIR.parent / "frontend" / "public" / "medical" / "lucent-on-form.png",
     BASE_DIR.parent / "frontend" / "public" / "lucent-logo.png",
 ]
@@ -25,6 +26,7 @@ TITLE_CANDIDATES = [
 ]
 CSS_CANDIDATES = [
     BASE_DIR.parent / "frontend" / "src" / "styles" / "globe-hospital-form.css",
+    BASE_DIR / "app" / "static" / "globe-hospital-form.css",
 ]
 
 
@@ -243,7 +245,7 @@ html, body {{
       <span class="gh-cross">✚</span>
       <div class="gh-em-mid">
         <div class="gh-em-title"><span class="gh-24">24X7</span> <span class="gh-em-hi">इमरजेन्सी एण्ड ट्रामा केयर</span></div>
-        <div class="gh-em-phones">EMERGENCY CONTACT NO.: 9307467795, 9305238541</div>
+        <div class="gh-em-phones">EMERGENCY CONTACT NO.: 9307467795, 9794912989</div>
       </div>
       <span class="gh-cross">✚</span>
     </div>
@@ -253,7 +255,16 @@ html, body {{
 
 
 async def generate_medical_pdf(row: MedicalTest) -> Path:
+    paths = await generate_medical_pdfs_batch([row])
+    return paths[row.id]
+
+
+async def generate_medical_pdfs_batch(rows: list[MedicalTest]) -> dict[int, Path]:
+    """Generate PDFs for many medical tests with one shared Chromium instance."""
     from playwright.async_api import async_playwright
+
+    if not rows:
+        return {}
 
     default_browsers = Path.home() / "Library" / "Caches" / "ms-playwright"
     if default_browsers.exists() and not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
@@ -261,23 +272,30 @@ async def generate_medical_pdf(row: MedicalTest) -> Path:
 
     out_dir = settings.generated_path.parent / "medical"
     out_dir.mkdir(parents=True, exist_ok=True)
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in (row.patient_name or "form"))
-    output = out_dir / f"medical-{row.id}-{safe_name[:40]}.pdf"
-    html = build_medical_form_html(row)
+    results: dict[int, Path] = {}
 
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(viewport={"width": 794, "height": 1123})
-        await page.set_content(html, wait_until="load")
-        await page.pdf(
-            path=str(output),
-            width="210mm",
-            height="297mm",
-            landscape=False,
-            print_background=True,
-            margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
-            prefer_css_page_size=True,
-            page_ranges="1",
-        )
-        await browser.close()
-    return output
+        try:
+            page = await browser.new_page(viewport={"width": 794, "height": 1123})
+            for row in rows:
+                safe_name = "".join(
+                    c if c.isalnum() or c in "-_" else "_" for c in (row.patient_name or "form")
+                )
+                output = out_dir / f"medical-{row.id}-{safe_name[:40]}.pdf"
+                html = build_medical_form_html(row)
+                await page.set_content(html, wait_until="load")
+                await page.pdf(
+                    path=str(output),
+                    width="210mm",
+                    height="297mm",
+                    landscape=False,
+                    print_background=True,
+                    margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
+                    prefer_css_page_size=True,
+                    page_ranges="1",
+                )
+                results[row.id] = output
+        finally:
+            await browser.close()
+    return results

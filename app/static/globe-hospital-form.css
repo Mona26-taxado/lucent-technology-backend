@@ -1,0 +1,537 @@
+/* ===== Globe Hospital A4 — geometry from reference-globe-hospital-form.png =====
+   Reference 1446×2048 → canvas 794×1123
+   Header height = packed content (NOT stretched). Green facilities ÷968.
+*/
+.hospital-form-stage {
+  width: 100%;
+  overflow-x: auto;
+  padding: 12px 0 24px;
+  background: #d8dde5;
+}
+
+.hospital-form {
+  --gh-blue: #003f82;
+  --gh-red: #e02020;
+  --gh-em-red: #df1018;
+  --gh-green: #00843d;
+  --gh-purple: #5c168b;
+  --gh-line: #7a9bb8;
+  --gh-text: #111;
+
+  box-sizing: border-box;
+  width: 794px;
+  height: 1123px;
+  margin: 0 auto;
+  background: #fff;
+  border: 2px solid var(--gh-blue);
+  color: var(--gh-text);
+  font-family: Arial, Helvetica, 'Noto Sans Devanagari', sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+.hospital-form *,
+.hospital-form *::before,
+.hospital-form *::after {
+  box-sizing: border-box;
+}
+
+/* ---- HEADER: height from packed content (no stretched blank) ----
+   Phones → title → trust → addr → slogan → blue, small fixed gaps.
+   Crest height tracks the mid stack. NO margin-top:auto.
+*/
+.gh-header {
+  flex: 0 0 auto;
+  height: auto;
+  padding: 2px 5px 0;
+  display: flex;
+  flex-direction: column;
+  overflow: visible;
+}
+.gh-header-grid {
+  display: grid;
+  grid-template-columns: 118px minmax(0, 1fr) 112px;
+  gap: 0 2px;
+  align-items: start;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+.gh-logo-col {
+  text-align: center;
+  padding-top: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.gh-logo {
+  width: 116px;
+  height: auto;
+  max-height: 138px;
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+  object-position: top center;
+}
+.gh-reg {
+  margin-top: 0;
+  font-size: 9.5px;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #000;
+}
+.gh-header-mid {
+  text-align: center;
+  min-width: 0;
+  padding-top: 0;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.gh-phones {
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.1;
+  color: #000;
+  white-space: nowrap;
+}
+.gh-title-img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 52px;
+  margin: 8px auto 0;
+  object-fit: contain;
+  object-position: center;
+  overflow: visible;
+}
+.gh-trust {
+  margin-top: 6px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--gh-red);
+  line-height: 1.1;
+}
+.gh-addr {
+  margin: 5px auto 0;
+  max-width: 100%;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.22;
+  color: #000;
+}
+.gh-slogan {
+  margin-top: 6px;
+  margin-bottom: 0;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gh-green);
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+}
+.gh-lucent-col {
+  text-align: right;
+  padding-top: 14px;
+  overflow: visible;
+  justify-self: end;
+  width: 100%;
+}
+.gh-lucent {
+  display: block;
+  width: 108px;
+  height: auto;
+  max-width: 100%;
+  margin-left: auto;
+  object-fit: contain;
+  object-position: top right;
+}
+.gh-hline {
+  flex: 0 0 auto;
+  margin-top: 4px;
+  height: 2px;
+  background: var(--gh-blue);
+}
+
+/* ---- BODY: fills between header divider and green footer line ---- */
+.gh-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 28.6% 1fr;
+}
+
+.gh-docs {
+  background: #eef3f8;
+  border-right: 1.25px solid var(--gh-blue);
+  overflow: hidden;
+  padding: 1px 5px 1px 4px;
+  display: flex;
+  flex-direction: column;
+}
+.gh-doc {
+  border-bottom: 0.75px solid var(--gh-line);
+  padding: 1px 2px 0;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.gh-doc:last-child {
+  border-bottom: none;
+}
+.gh-doc-name {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--gh-red);
+  line-height: 1.1;
+  font-family: Arial, Helvetica, sans-serif;
+}
+.gh-doc-detail {
+  font-size: 8.5px;
+  font-weight: 400;
+  color: #222;
+  line-height: 1.15;
+}
+
+.gh-form {
+  padding: 6px 14px 2px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-content: flex-start;
+  gap: 0;
+  overflow: hidden;
+  min-height: 0;
+  background: #fff;
+}
+.gh-date-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+.gh-date {
+  width: 220px;
+}
+.gh-date .gh-label {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.gh-date .gh-rule {
+  border-bottom: 1px dotted #555;
+}
+.gh-date .gh-input {
+  font-size: 13px;
+  font-weight: 700;
+  color: #111;
+}
+.gh-field {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 20px;
+}
+.gh-label,
+.gh-label-only {
+  flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #111;
+  line-height: 1.1;
+  padding-bottom: 1px;
+  letter-spacing: 0.01em;
+}
+.gh-leaders {
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.gh-rule {
+  flex: 1;
+  min-width: 0;
+  border-bottom: 0.85px solid #555;
+  min-height: 16px;
+}
+.gh-rule-dotted {
+  border-bottom: 0.85px dotted #555;
+}
+.gh-blank-rule {
+  width: 100%;
+  border-bottom: 0.85px solid #555;
+  min-height: 16px;
+  margin-top: 18px;
+  margin-bottom: 0;
+}
+.gh-input {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0 2px 0;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: #111;
+  outline: none;
+  font-family: inherit;
+  line-height: 1.15;
+}
+.gh-pair {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 0;
+}
+.gh-pair .gh-field {
+  margin-bottom: 20px;
+}
+.gh-age {
+  width: 36%;
+}
+.gh-sex {
+  flex: 1;
+}
+.gh-hw {
+  flex: 1;
+}
+
+.gh-block {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+.gh-block .gh-field {
+  margin-bottom: 0;
+}
+.gh-block-lab {
+  margin-bottom: 110px;
+}
+.gh-block-final {
+  margin-bottom: 18px;
+}
+
+.gh-cert {
+  margin-top: 2px;
+  margin-bottom: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.45;
+  color: #111;
+}
+.gh-cert p {
+  margin: 0 0 2px;
+}
+.gh-inline-rule {
+  display: inline-block;
+  min-width: 200px;
+  border-bottom: 0.85px solid #555;
+  vertical-align: baseline;
+}
+.gh-inline-rule.gh-rule-dotted {
+  border-bottom: 0.85px dotted #555;
+}
+.gh-inline-rule .gh-input {
+  display: inline-block;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+}
+.gh-dots {
+  width: 55%;
+  height: 0;
+  border-bottom: 0.85px dotted #555;
+  margin: 5px 0 10px;
+}
+
+.gh-sign {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding-bottom: 4px;
+  padding-right: 4px;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.gh-sign .gh-field {
+  margin-bottom: 0;
+}
+.gh-sign .gh-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+.gh-legal {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #111;
+  white-space: nowrap;
+}
+
+/* ---- FOOTER: locked 155px so green divider sits at y≈968 ---- */
+.gh-footer {
+  flex: 0 0 155px;
+  height: 155px;
+  padding: 0 6px 2px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow: hidden;
+}
+.gh-foot-line {
+  height: 2px;
+  background: var(--gh-green);
+  margin: 0 -6px 3px;
+  flex: 0 0 auto;
+}
+.gh-services {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-family: 'Noto Sans Devanagari', Arial, sans-serif;
+  padding: 0 2px;
+  flex: 0 0 auto;
+}
+.gh-svc-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+}
+.gh-svc {
+  display: flex;
+  gap: 4px;
+  align-items: flex-start;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.18;
+  color: #000;
+}
+.gh-diamond {
+  color: var(--gh-em-red);
+  font-size: 8.5px;
+  line-height: 1.3;
+  flex-shrink: 0;
+  display: inline-block;
+}
+
+.gh-pills {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 28px;
+  margin: 7px 4px 4px;
+  flex: 0 0 auto;
+}
+.gh-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 128px;
+  height: 26px;
+  padding: 0 22px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 13.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+.gh-pill-icu { background: var(--gh-em-red); }
+.gh-pill-nicu { background: var(--gh-blue); }
+.gh-pill-vent { background: var(--gh-green); }
+.gh-pill-cancer { background: var(--gh-purple); }
+
+.gh-em-line {
+  height: 1.25px;
+  background: var(--gh-blue);
+  margin: 1px -6px 2px;
+  flex: 0 0 auto;
+}
+.gh-emergency {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px 1px;
+  flex: 0 0 auto;
+}
+.gh-cross {
+  color: var(--gh-em-red);
+  font-size: 32px;
+  font-weight: 900;
+  line-height: 1;
+}
+.gh-em-mid {
+  text-align: center;
+  flex: 1;
+}
+.gh-em-title {
+  font-size: 16.5px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-family: 'Noto Sans Devanagari', Arial, sans-serif;
+}
+.gh-24 {
+  color: var(--gh-blue);
+  font-size: 17.5px;
+}
+.gh-em-hi {
+  color: var(--gh-em-red);
+}
+.gh-em-phones {
+  margin-top: 1px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #000;
+  letter-spacing: 0.015em;
+}
+
+@media print {
+  .no-print { display: none !important; }
+  html, body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .hospital-form-stage {
+    background: #fff !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
+  .hospital-form {
+    page-break-after: avoid;
+    page-break-inside: avoid;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    width: 794px !important;
+    height: 1123px !important;
+  }
+  aside:not(.gh-docs),
+  header.sticky,
+  nav,
+  .lt-sidebar {
+    display: none !important;
+  }
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+  }
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+}
