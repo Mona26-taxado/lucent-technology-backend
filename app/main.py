@@ -10,7 +10,17 @@ from app.core.security import get_password_hash
 from app.models import User, ApplicationSettings, CertificateTemplate
 from app.services.file_service import ensure_directories, dump_field_positions, parse_field_positions
 from app.schemas.template import DEFAULT_FIELD_POSITIONS
-from app.api.routes import auth, certificates, templates, dashboard, print_history, settings, files, backup
+from app.api.routes import (
+    auth,
+    certificates,
+    templates,
+    dashboard,
+    print_history,
+    settings,
+    files,
+    backup,
+    medical_tests,
+)
 
 app_settings = get_settings()
 
@@ -37,6 +47,35 @@ def ensure_schema_patches() -> None:
                     "ADD COLUMN paper_size VARCHAR(20) NOT NULL DEFAULT 'a4'"
                 )
             )
+
+        # medical_tests — Globe Hospital form columns (safe if table missing)
+        mt_exists = conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='medical_tests'")
+        ).fetchone()
+        if mt_exists:
+            mt_cols = {
+                row[1]
+                for row in conn.execute(text("PRAGMA table_info(medical_tests)")).fetchall()
+            }
+            for col, ddl in [
+                ("exam_date", "ALTER TABLE medical_tests ADD COLUMN exam_date VARCHAR(50)"),
+                ("height", "ALTER TABLE medical_tests ADD COLUMN height VARCHAR(50)"),
+                ("weight", "ALTER TABLE medical_tests ADD COLUMN weight VARCHAR(50)"),
+                ("chest", "ALTER TABLE medical_tests ADD COLUMN chest VARCHAR(100)"),
+                ("pulse", "ALTER TABLE medical_tests ADD COLUMN pulse VARCHAR(50)"),
+                ("blood_sugar", "ALTER TABLE medical_tests ADD COLUMN blood_sugar VARCHAR(50)"),
+                ("lab_investigation", "ALTER TABLE medical_tests ADD COLUMN lab_investigation TEXT"),
+                ("final_impression", "ALTER TABLE medical_tests ADD COLUMN final_impression TEXT"),
+                ("certified_name", "ALTER TABLE medical_tests ADD COLUMN certified_name VARCHAR(300)"),
+                ("examiner_name", "ALTER TABLE medical_tests ADD COLUMN examiner_name VARCHAR(200)"),
+                (
+                    "examiner_qualification",
+                    "ALTER TABLE medical_tests ADD COLUMN examiner_qualification VARCHAR(200)",
+                ),
+                ("examiner_place", "ALTER TABLE medical_tests ADD COLUMN examiner_place VARCHAR(200)"),
+            ]:
+                if col not in mt_cols:
+                    conn.execute(text(ddl))
 
 
 def seed_database() -> None:
@@ -214,6 +253,7 @@ def create_app() -> FastAPI:
     application.include_router(settings.router, prefix="/api")
     application.include_router(files.router, prefix="/api")
     application.include_router(backup.router, prefix="/api")
+    application.include_router(medical_tests.router, prefix="/api")
 
     @application.get("/api/health")
     def health():

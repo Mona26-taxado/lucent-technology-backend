@@ -98,6 +98,60 @@ class PrintHistory(Base):
     printer = relationship("User", back_populates="print_histories")
 
 
+class MedicalTest(Base):
+    """Globe Hospital medical examination form records."""
+
+    __tablename__ = "medical_tests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    exam_date: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    company_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    training_location: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+
+    patient_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    age: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    gender: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    mobile_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+
+    height: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    weight: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    chest: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    blood_pressure: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    pulse: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    blood_sugar: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+
+    lab_investigation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    final_impression: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    certified_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+
+    examiner_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    examiner_qualification: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    examiner_place: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
+    # Legacy fields (kept for older rows / optional use)
+    sugar: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    pulse_rate: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    heart_beat: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    body_temperature: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    ecg_findings: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ecg_result: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    xray_findings: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    xray_result: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    examined: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    overall_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    vision_right: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    vision_left: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    retina_test: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    lens_condition: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    eye_remarks: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class ApplicationSettings(Base):
     __tablename__ = "application_settings"
 
@@ -131,5 +185,6 @@ __all__ = [
     "Certificate",
     "CertificateTemplate",
     "PrintHistory",
+    "MedicalTest",
     "ApplicationSettings",
 ]
