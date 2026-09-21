@@ -73,6 +73,7 @@ def ensure_schema_patches() -> None:
                     "ALTER TABLE medical_tests ADD COLUMN examiner_qualification VARCHAR(200)",
                 ),
                 ("examiner_place", "ALTER TABLE medical_tests ADD COLUMN examiner_place VARCHAR(200)"),
+                ("vehicle_number", "ALTER TABLE medical_tests ADD COLUMN vehicle_number VARCHAR(50)"),
             ]:
                 if col not in mt_cols:
                     conn.execute(text(ddl))

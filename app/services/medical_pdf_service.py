@@ -140,15 +140,37 @@ def build_medical_form_html(row: MedicalTest) -> str:
 
     return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=794"/>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet"/>
 <style>
 {css}
+/* PDF/QA capture shell — same 794×1123 document as live preview (screen CSS, not a separate print layout). */
 html, body {{
-  margin: 0; padding: 0; background: #fff;
-  width: 794px; height: 1123px; overflow: hidden;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #fff;
+  width: auto;
+  min-width: 0;
+  overflow: visible;
 }}
-.hospital-form-stage {{ padding: 0; background: #fff; }}
-.gh-input {{ display: block; min-height: 14px; }}
+#hospital-form-print {{
+  margin: 0 !important;
+  width: 794px;
+  height: 1123px;
+  min-width: 794px;
+  max-width: 794px;
+  min-height: 1123px;
+  max-height: 1123px;
+  box-sizing: border-box;
+  overflow: hidden;
+}}
+.hospital-form-stage {{ padding: 0; background: #fff; width: 794px; }}
+/* Print-safe values use the same .gh-input geometry as live <input class="gh-input"> */
+span.gh-input {{
+  display: block;
+  min-height: 14px;
+  white-space: pre-wrap;
+}}
 </style></head>
 <body>
 <div class="hospital-form" id="hospital-form-print">
@@ -159,7 +181,7 @@ html, body {{
         <div class="gh-reg">Reg. No.: RMEE2122200</div>
       </div>
       <div class="gh-header-mid">
-        <div class="gh-phones">Hospital : 0522-2410951, 9451384215, 7800349822</div>
+        <div class="gh-phones">Hospital : 0522-2410951, 9451384215, 9794912989</div>
         {title_html}
         <div class="gh-trust">Run by (Ayushmaan Health &amp; Educational Trust)</div>
         <div class="gh-addr">Add.: Sector 10- C-Block, 4022, Jal Sansthan T.W.O. No.-10, Omkarshwar Temple, M.I.S. Chauraha Road,<br/>Meena Bakery, Rajajipuram, Lucknow</div>
@@ -175,8 +197,12 @@ html, body {{
   <div class="gh-body">
     <aside class="gh-docs">{doctors_html}</aside>
     <section class="gh-form">
-      <div class="gh-date-row">
-        <div class="gh-field gh-date">
+      <div class="medical-top-row">
+        <div class="vehicle-field">
+          <span class="gh-label">VEHICLE NUMBER:</span>
+          <span class="gh-rule"><span class="gh-input">{_esc(row.vehicle_number)}</span></span>
+        </div>
+        <div class="date-field">
           <span class="gh-label">Date</span>
           <span class="gh-rule gh-rule-dotted"><span class="gh-input">{_esc(row.exam_date)}</span></span>
         </div>
@@ -259,8 +285,93 @@ async def generate_medical_pdf(row: MedicalTest) -> Path:
     return paths[row.id]
 
 
+def _png_bytes_to_a4_pdf(png_bytes: bytes, output: Path, *, css_px_width: int = 794) -> None:
+    """Place the full form screenshot into one A4 page using CONTAIN (never crop).
+
+    Screenshot may be DSF×794 × DSF×1123. That is still one CSS document.
+    Fit the entire image inside A4; letterbox with white if needed.
+    """
+    import io
+
+    from PIL import Image
+
+    src = Image.open(io.BytesIO(png_bytes)).convert("RGB")
+    src_w, src_h = src.size
+
+    # True A4 at 150 DPI (sharp enough for print, exact aspect)
+    dpi = 150.0
+    a4_w_mm, a4_h_mm = 210.0, 297.0
+    a4_w_px = int(round(a4_w_mm / 25.4 * dpi))
+    a4_h_px = int(round(a4_h_mm / 25.4 * dpi))
+
+    scale = min(a4_w_px / src_w, a4_h_px / src_h)
+    render_w = max(1, int(round(src_w * scale)))
+    render_h = max(1, int(round(src_h * scale)))
+    # Guard: never exceed A4 (rounding)
+    render_w = min(render_w, a4_w_px)
+    render_h = min(render_h, a4_h_px)
+
+    fitted = src.resize((render_w, render_h), Image.Resampling.LANCZOS)
+    canvas = Image.new("RGB", (a4_w_px, a4_h_px), (255, 255, 255))
+    x = (a4_w_px - render_w) // 2
+    y = (a4_h_px - render_h) // 2
+    canvas.paste(fitted, (x, y))
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(output, "PDF", resolution=dpi)
+    if os.environ.get("MEDICAL_PDF_DEBUG"):
+        src.save(output.with_suffix(".capture.png"))
+
+
+async def _wait_form_ready(page) -> dict:
+    await page.evaluate("() => document.fonts.ready")
+    await page.evaluate(
+        """async () => {
+          const imgs = Array.from(document.images || []);
+          await Promise.all(imgs.map((img) => {
+            if (img.complete && img.naturalWidth > 0) return null;
+            return new Promise((resolve) => {
+              img.addEventListener('load', resolve, { once: true });
+              img.addEventListener('error', resolve, { once: true });
+            });
+          }));
+        }"""
+    )
+    metrics = await page.evaluate(
+        """() => {
+          const el = document.querySelector('#hospital-form-print');
+          if (!el) return null;
+          const rect = el.getBoundingClientRect();
+          const title = document.querySelector('.gh-title-img');
+          return {
+            width: rect.width,
+            height: rect.height,
+            scrollWidth: el.scrollWidth,
+            scrollHeight: el.scrollHeight,
+            titleNatural: title ? { w: title.naturalWidth, h: title.naturalHeight } : null,
+            titleRendered: title ? { w: title.clientWidth, h: title.clientHeight } : null,
+          };
+        }"""
+    )
+    if not metrics:
+        raise RuntimeError("Globe form #hospital-form-print not found before PDF capture")
+    if abs(metrics["width"] - 794) > 1 or abs(metrics["height"] - 1123) > 2:
+        raise RuntimeError(f"Globe form not at 794×1123 before PDF capture: {metrics}")
+    if metrics["scrollWidth"] > 794 + 1 or metrics["scrollHeight"] > 1123 + 2:
+        raise RuntimeError(
+            "Globe form content overflows 794×1123 (would clip in screenshot): "
+            f"scroll={metrics['scrollWidth']}×{metrics['scrollHeight']}"
+        )
+    return metrics
+
+
 async def generate_medical_pdfs_batch(rows: list[MedicalTest]) -> dict[int, Path]:
-    """Generate PDFs for many medical tests with one shared Chromium instance."""
+    """Generate PDFs for many medical tests with one shared Chromium instance.
+
+    Method: Playwright renders the SAME 794×1123 CSS document used by the live
+    preview (shared globe-hospital-form.css), screenshots that node, then embeds
+    the PNG into a true A4 PDF with CONTAIN placement (no crop).
+    """
     from playwright.async_api import async_playwright
 
     if not rows:
@@ -277,24 +388,31 @@ async def generate_medical_pdfs_batch(rows: list[MedicalTest]) -> dict[int, Path
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         try:
-            page = await browser.new_page(viewport={"width": 794, "height": 1123})
+            # Viewport larger than the form so browser chrome/margins cannot clip capture
+            page = await browser.new_page(
+                viewport={"width": 960, "height": 1280},
+                device_scale_factor=2,
+            )
+            await page.emulate_media(media="screen")
             for row in rows:
                 safe_name = "".join(
                     c if c.isalnum() or c in "-_" else "_" for c in (row.patient_name or "form")
                 )
                 output = out_dir / f"medical-{row.id}-{safe_name[:40]}.pdf"
                 html = build_medical_form_html(row)
-                await page.set_content(html, wait_until="load")
-                await page.pdf(
-                    path=str(output),
-                    width="210mm",
-                    height="297mm",
-                    landscape=False,
-                    print_background=True,
-                    margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
-                    prefer_css_page_size=True,
-                    page_ranges="1",
+                await page.set_content(html, wait_until="networkidle")
+                metrics = await _wait_form_ready(page)
+                print(
+                    f"[medical-pdf] id={row.id} box={metrics['width']}x{metrics['height']} "
+                    f"scroll={metrics['scrollWidth']}x{metrics['scrollHeight']} "
+                    f"title={metrics.get('titleNatural')}->{metrics.get('titleRendered')}"
                 )
+                png_bytes = await page.locator("#hospital-form-print").screenshot(
+                    type="png",
+                    animations="disabled",
+                    caret="hide",
+                )
+                _png_bytes_to_a4_pdf(png_bytes, output, css_px_width=794)
                 results[row.id] = output
         finally:
             await browser.close()

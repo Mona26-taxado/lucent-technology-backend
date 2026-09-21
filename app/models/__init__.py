@@ -105,6 +105,7 @@ class MedicalTest(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     exam_date: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    vehicle_number: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     company_name: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     training_location: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
 

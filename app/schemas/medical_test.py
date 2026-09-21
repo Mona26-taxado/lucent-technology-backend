@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 class MedicalTestBase(BaseModel):
     exam_date: Optional[str] = None
+    vehicle_number: Optional[str] = None
     company_name: Optional[str] = None
     training_location: Optional[str] = None
 
@@ -36,6 +37,7 @@ class MedicalTestCreate(MedicalTestBase):
 
 class MedicalTestUpdate(BaseModel):
     exam_date: Optional[str] = None
+    vehicle_number: Optional[str] = None
     company_name: Optional[str] = None
     training_location: Optional[str] = None
     patient_name: Optional[str] = Field(default=None, min_length=1, max_length=300)
@@ -72,3 +74,7 @@ class MedicalTestListResponse(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class MedicalTestBulkDeleteRequest(BaseModel):
+    ids: list[int] = Field(min_length=1)

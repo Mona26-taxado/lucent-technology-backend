@@ -5,6 +5,7 @@ from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, Response
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user
@@ -16,6 +17,7 @@ from app.schemas.medical_test import (
     MedicalTestUpdate,
     MedicalTestOut,
     MedicalTestListResponse,
+    MedicalTestBulkDeleteRequest,
 )
 from app.services.medical_pdf_service import generate_medical_pdf, generate_medical_pdfs_batch
 
@@ -32,7 +34,7 @@ def _safe_zip_name(row: MedicalTest) -> str:
 @router.get("", response_model=MedicalTestListResponse)
 def list_medical_tests(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(10, ge=1, le=100),
     q: str | None = Query(None),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -40,11 +42,16 @@ def list_medical_tests(
     query = db.query(MedicalTest)
     if q and q.strip():
         like = f"%{q.strip()}%"
+        compact = f"%{''.join(q.strip().split())}%"
         query = query.filter(
-            (MedicalTest.patient_name.ilike(like))
-            | (MedicalTest.mobile_number.ilike(like))
-            | (MedicalTest.company_name.ilike(like))
-            | (MedicalTest.training_location.ilike(like))
+            or_(
+                MedicalTest.patient_name.ilike(like),
+                MedicalTest.mobile_number.ilike(like),
+                MedicalTest.company_name.ilike(like),
+                MedicalTest.training_location.ilike(like),
+                MedicalTest.vehicle_number.ilike(like),
+                func.replace(MedicalTest.vehicle_number, " ", "").ilike(compact),
+            )
         )
     total = query.count()
     pages = ceil(total / page_size) if page_size else 1
@@ -112,6 +119,39 @@ async def bulk_download_medical_tests(
     )
 
 
+@router.post("/bulk-delete", response_model=MessageResponse)
+def bulk_delete_medical_tests(
+    data: MedicalTestBulkDeleteRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Permanently delete the given medical test IDs. Unknown IDs are skipped."""
+    ids = sorted({int(i) for i in data.ids if int(i) > 0})
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No valid medical test IDs provided",
+        )
+
+    rows = db.query(MedicalTest).filter(MedicalTest.id.in_(ids)).all()
+    deleted = 0
+    try:
+        for row in rows:
+            db.delete(row)
+            deleted += 1
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Bulk delete failed: {exc}",
+        ) from exc
+
+    return MessageResponse(
+        message=f"{deleted} medical test report{'s' if deleted != 1 else ''} deleted successfully."
+    )
+
+
 @router.get("/{test_id}/pdf")
 async def download_medical_pdf(
     test_id: int,
@@ -155,7 +195,11 @@ def create_medical_test(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    row = MedicalTest(**data.model_dump(), created_by=current_user.id)
+    payload = data.model_dump()
+    if payload.get("vehicle_number") is not None:
+        vn = str(payload["vehicle_number"]).strip()
+        payload["vehicle_number"] = vn or None
+    row = MedicalTest(**payload, created_by=current_user.id)
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -173,6 +217,8 @@ def update_medical_test(
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medical test not found")
     for key, value in data.model_dump(exclude_unset=True).items():
+        if key == "vehicle_number" and value is not None:
+            value = str(value).strip() or None
         setattr(row, key, value)
     db.add(row)
     db.commit()
