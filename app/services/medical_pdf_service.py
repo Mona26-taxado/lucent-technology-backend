@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from app.core.config import BASE_DIR, get_settings
@@ -323,7 +324,7 @@ def _png_bytes_to_a4_pdf(png_bytes: bytes, output: Path, *, css_px_width: int = 
         src.save(output.with_suffix(".capture.png"))
 
 
-async def _wait_form_ready(page) -> dict:
+async def _wait_form_ready(page, *, first: bool = False) -> dict:
     await page.evaluate("() => document.fonts.ready")
     await page.evaluate(
         """async () => {
@@ -337,6 +338,9 @@ async def _wait_form_ready(page) -> dict:
           }));
         }"""
     )
+    # First page may still be warming font cache; later pages reuse browser cache.
+    if first:
+        await page.wait_for_timeout(150)
     metrics = await page.evaluate(
         """() => {
           const el = document.querySelector('#hospital-form-print');
@@ -365,12 +369,19 @@ async def _wait_form_ready(page) -> dict:
     return metrics
 
 
-async def generate_medical_pdfs_batch(rows: list[MedicalTest]) -> dict[int, Path]:
+async def generate_medical_pdfs_batch(
+    rows: list[MedicalTest],
+    *,
+    out_dir: Path | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> dict[int, Path]:
     """Generate PDFs for many medical tests with one shared Chromium instance.
 
     Method: Playwright renders the SAME 794×1123 CSS document used by the live
     preview (shared globe-hospital-form.css), screenshots that node, then embeds
     the PNG into a true A4 PDF with CONTAIN placement (no crop).
+
+    One Playwright + one Chromium + one page for the whole batch (no per-report browsers).
     """
     from playwright.async_api import async_playwright
 
@@ -381,12 +392,16 @@ async def generate_medical_pdfs_batch(rows: list[MedicalTest]) -> dict[int, Path
     if default_browsers.exists() and not os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
         os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(default_browsers)
 
-    out_dir = settings.generated_path.parent / "medical"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    target_dir = out_dir or (settings.generated_path.parent / "medical")
+    target_dir.mkdir(parents=True, exist_ok=True)
     results: dict[int, Path] = {}
+    total = len(rows)
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(
+            headless=True,
+            args=["--disable-dev-shm-usage", "--no-sandbox"],
+        )
         try:
             # Viewport larger than the form so browser chrome/margins cannot clip capture
             page = await browser.new_page(
@@ -394,18 +409,20 @@ async def generate_medical_pdfs_batch(rows: list[MedicalTest]) -> dict[int, Path
                 device_scale_factor=2,
             )
             await page.emulate_media(media="screen")
-            for row in rows:
+            for index, row in enumerate(rows):
                 safe_name = "".join(
                     c if c.isalnum() or c in "-_" else "_" for c in (row.patient_name or "form")
                 )
-                output = out_dir / f"medical-{row.id}-{safe_name[:40]}.pdf"
+                output = target_dir / f"medical-{row.id}-{safe_name[:40]}.pdf"
                 html = build_medical_form_html(row)
-                await page.set_content(html, wait_until="networkidle")
-                metrics = await _wait_form_ready(page)
+                # domcontentloaded is much faster than networkidle; assets are mostly data-URIs.
+                await page.set_content(html, wait_until="domcontentloaded")
+                metrics = await _wait_form_ready(page, first=(index == 0))
                 print(
                     f"[medical-pdf] id={row.id} box={metrics['width']}x{metrics['height']} "
                     f"scroll={metrics['scrollWidth']}x{metrics['scrollHeight']} "
-                    f"title={metrics.get('titleNatural')}->{metrics.get('titleRendered')}"
+                    f"title={metrics.get('titleNatural')}->{metrics.get('titleRendered')} "
+                    f"({index + 1}/{total})"
                 )
                 png_bytes = await page.locator("#hospital-form-print").screenshot(
                     type="png",
@@ -414,6 +431,8 @@ async def generate_medical_pdfs_batch(rows: list[MedicalTest]) -> dict[int, Path
                 )
                 _png_bytes_to_a4_pdf(png_bytes, output, css_px_width=794)
                 results[row.id] = output
+                if on_progress:
+                    on_progress(index + 1, total)
         finally:
             await browser.close()
     return results

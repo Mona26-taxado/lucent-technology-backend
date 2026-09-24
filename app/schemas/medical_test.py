@@ -82,3 +82,23 @@ class MedicalTestBulkDeleteRequest(BaseModel):
 
 class MedicalTestBulkDownloadRequest(BaseModel):
     ids: list[int] = Field(min_length=1)
+
+
+class MedicalTestBulkDownloadJobRequest(BaseModel):
+    """Create a background ZIP export job.
+
+    - export_all=True → Download All Reports (ids ignored)
+    - otherwise ids must be the selected report IDs
+    """
+
+    ids: list[int] | None = None
+    export_all: bool = False
+
+
+class MedicalTestBulkDownloadJobOut(BaseModel):
+    job_id: str
+    status: str
+    processed: int
+    total: int
+    error: str | None = None
+    download_url: str | None = None

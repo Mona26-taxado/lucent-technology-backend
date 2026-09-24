@@ -1,12 +1,7 @@
 from math import ceil
-import io
-import zipfile
-from datetime import date
-from pathlib import Path
-from typing import Callable
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
-from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -20,34 +15,17 @@ from app.schemas.medical_test import (
     MedicalTestOut,
     MedicalTestListResponse,
     MedicalTestBulkDeleteRequest,
-    MedicalTestBulkDownloadRequest,
+    MedicalTestBulkDownloadJobRequest,
+    MedicalTestBulkDownloadJobOut,
 )
-from app.services.medical_pdf_service import generate_medical_pdf, generate_medical_pdfs_batch
+from app.services.medical_export_jobs import (
+    create_export_job,
+    get_job,
+    mark_job_downloaded_soon,
+)
+from app.services.medical_pdf_service import generate_medical_pdf
 
 router = APIRouter(prefix="/medical-tests", tags=["Medical Tests"])
-
-
-def _safe_token(value: str | None, *, fallback: str, max_len: int = 40) -> str:
-    raw = "".join(c if c.isalnum() or c in "-_" else "_" for c in (value or ""))
-    cleaned = "_".join(part for part in raw.split("_") if part).strip("_")
-    return (cleaned[:max_len] or fallback)
-
-
-def _safe_zip_name(row: MedicalTest) -> str:
-    """Legacy name used by Download All Reports ZIP."""
-    patient = _safe_token(row.patient_name, fallback="patient")
-    date_part = (row.exam_date or "nodate").replace("/", "-")
-    return f"medical-{row.id}-{date_part}-{patient}.pdf"
-
-
-def _selected_zip_name(row: MedicalTest, serial: int) -> str:
-    """ZIP entry for Download Selected: 001-PATIENT-VEHICLE.pdf"""
-    patient = _safe_token(row.patient_name, fallback="patient", max_len=30).upper()
-    vehicle = _safe_token(row.vehicle_number, fallback="", max_len=24).upper()
-    seq = f"{serial:03d}"
-    if vehicle:
-        return f"{seq}-{patient}-{vehicle}.pdf"
-    return f"{seq}-{patient}-medical-test.pdf"
 
 
 @router.get("", response_model=MedicalTestListResponse)
@@ -89,131 +67,76 @@ def list_medical_tests(
     )
 
 
-def _zip_medical_rows(
-    rows: list[MedicalTest],
-    path_by_id: dict[int, Path],
-    *,
-    name_fn: Callable[[MedicalTest, int], str],
-) -> bytes:
-    buffer = io.BytesIO()
-    used_names: set[str] = set()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as zf:
-        for index, row in enumerate(rows, start=1):
-            path = path_by_id.get(row.id)
-            if not path or not path.exists():
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"PDF missing for medical test #{row.id}",
-                )
-            arcname = name_fn(row, index)
-            if arcname in used_names:
-                stem = arcname[:-4] if arcname.lower().endswith(".pdf") else arcname
-                arcname = f"{stem}-dup.pdf"
-            used_names.add(arcname)
-            zf.write(str(path), arcname)
-    return buffer.getvalue()
-
-
-@router.get("/bulk-download")
-async def bulk_download_medical_tests(
-    db: Session = Depends(get_db),
+@router.post(
+    "/bulk-download/jobs",
+    response_model=MedicalTestBulkDownloadJobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_bulk_download_job(
+    data: MedicalTestBulkDownloadJobRequest,
     current_user: User = Depends(get_current_user),
 ):
-    """Download a ZIP of all medical test report PDFs (Download All Reports)."""
-    rows = db.query(MedicalTest).order_by(MedicalTest.created_at.desc()).limit(500).all()
-    if not rows:
+    """Start a background ZIP export. Poll GET .../jobs/{id} then download the file."""
+    if data.export_all:
+        job = create_export_job(user_id=current_user.id, export_all=True)
+    else:
+        ids = [int(i) for i in (data.ids or []) if int(i) > 0]
+        if not ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No valid medical test IDs provided",
+            )
+        if len(ids) > 500:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Too many reports selected (max 500)",
+            )
+        job = create_export_job(user_id=current_user.id, ids=ids, export_all=False)
+
+    if job.status == "failed" and job.total <= 0:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No medical test reports found",
+            detail=job.error or "No medical test reports found for this export",
         )
-
-    try:
-        path_by_id = await generate_medical_pdfs_batch(rows)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Bulk PDF generation failed: {exc}",
-        ) from exc
-
-    zip_bytes = _zip_medical_rows(
-        rows,
-        path_by_id,
-        name_fn=lambda row, _i: _safe_zip_name(row),
-    )
-    stamp = date.today().isoformat()
-    filename = f"medical-reports-{stamp}.zip"
-    return Response(
-        content=zip_bytes,
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    return MedicalTestBulkDownloadJobOut(**job.to_public())
 
 
-@router.post("/bulk-download")
-async def bulk_download_selected_medical_tests(
-    data: MedicalTestBulkDownloadRequest,
-    db: Session = Depends(get_db),
+@router.get("/bulk-download/jobs/{job_id}", response_model=MedicalTestBulkDownloadJobOut)
+def get_bulk_download_job(
+    job_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Download a ZIP of PDFs for the selected medical test IDs only."""
-    ids: list[int] = []
-    seen: set[int] = set()
-    for raw in data.ids:
-        n = int(raw)
-        if n > 0 and n not in seen:
-            seen.add(n)
-            ids.append(n)
-    if not ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No valid medical test IDs provided",
-        )
-    if len(ids) > 200:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Too many reports selected (max 200)",
-        )
+    job = get_job(job_id)
+    if not job or job.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export job not found")
+    return MedicalTestBulkDownloadJobOut(**job.to_public())
 
-    found = db.query(MedicalTest).filter(MedicalTest.id.in_(ids)).all()
-    by_id = {row.id: row for row in found}
-    # Preserve request order for stable ZIP serials; skip missing/deleted IDs safely
-    rows = [by_id[i] for i in ids if i in by_id]
-    if not rows:
+
+@router.get("/bulk-download/jobs/{job_id}/file")
+def download_bulk_download_job_file(
+    job_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    job = get_job(job_id)
+    if not job or job.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Export job not found")
+    if job.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Export job is not ready (status={job.status})",
+        )
+    if not job.zip_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="No matching medical test reports found for the selected IDs",
+            detail="Export file expired or missing",
         )
-
-    path_by_id: dict[int, Path] = {}
-    try:
-        path_by_id = await generate_medical_pdfs_batch(rows)
-        zip_bytes = _zip_medical_rows(rows, path_by_id, name_fn=_selected_zip_name)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Bulk PDF generation failed: {exc}",
-        ) from exc
-    finally:
-        # ZIP is in-memory; remove PDFs generated for this selected batch
-        for path in path_by_id.values():
-            try:
-                if path.exists() and path.is_file():
-                    path.unlink(missing_ok=True)
-            except OSError:
-                pass
-
-    stamp = date.today().isoformat()
-    filename = f"medical-test-reports-{stamp}.zip"
-    return Response(
-        content=zip_bytes,
+    # Remove ZIP shortly after the response finishes streaming
+    background_tasks.add_task(mark_job_downloaded_soon, job_id)
+    return FileResponse(
+        path=str(job.zip_path),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        filename=job.zip_name or "medical-test-reports.zip",
     )
 
 
@@ -223,7 +146,7 @@ def bulk_delete_medical_tests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Permanently delete the given medical test IDs. Unknown IDs are skipped."""
+    """Permanently delete the given medical test IDs from the database."""
     ids = sorted({int(i) for i in data.ids if int(i) > 0})
     if not ids:
         raise HTTPException(
@@ -330,6 +253,7 @@ def delete_medical_test(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Permanently delete this medical test row from the database."""
     row = db.query(MedicalTest).filter(MedicalTest.id == test_id).first()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Medical test not found")
