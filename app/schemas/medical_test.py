@@ -78,3 +78,7 @@ class MedicalTestListResponse(BaseModel):
 
 class MedicalTestBulkDeleteRequest(BaseModel):
     ids: list[int] = Field(min_length=1)
+
+
+class MedicalTestBulkDownloadRequest(BaseModel):
+    ids: list[int] = Field(min_length=1)
